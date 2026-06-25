@@ -21,8 +21,10 @@ rg -n "(token|secret|password|client_secret|api_key|private_key)" .
 - Confirm route files exist with the router fixture smoke/coverage check:
 
 ```sh
-python3 scripts/validate_router_fixture.py --router AGENTS.md --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
+python3 scripts/validate_router_fixture.py --router AGENTS.md --fixture task-docs/<routing-fixture>.md
 ```
+
+Use `task-docs/_harness/templates/routing-scenario-matrix-template.md` as a starting template, not as the completed downstream fixture.
 
 This check verifies trigger, route, path, and optional rule mentions only. It is not semantic proof and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
