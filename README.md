@@ -34,6 +34,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | Path | What it contains |
 | --- | --- |
 | `.codex/agents/` | Optional Codex subagent adapter for the six v2 harness roles. |
+| `.codex/config.example.toml` | Optional Codex repo-config example for one-level subagent fan-out. |
 | `AGENTS.md` | The generic repo-level router used by agents in this repo. |
 | `docs/architecture.md` | High-level explanation of the harness model. |
 | `docs/adapters/codex-subagents.md` | How the Codex subagent TOML files map to the generic harness. |
@@ -86,7 +87,7 @@ After you build a routing scenario fixture, run the smoke/coverage check:
 ```sh
 python3 scripts/validate_router_fixture.py \
   --router AGENTS.md \
-  --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
+  --fixture task-docs/<routing-fixture>.md
 ```
 
 This helper checks trigger text, route paths, and optional ledger Rule ID mentions. It is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
@@ -114,6 +115,8 @@ The repo includes `.codex/agents/*.toml` for the six active v2 roles:
 
 These files are an adapter for Codex, not a separate architecture. Other agent runtimes can implement the same responsibilities with their own config format. See `docs/adapters/codex-subagents.md`.
 
+Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex config with `multi_agent.max_depth = 1`. Copy it to `.codex/config.toml` only if your Codex version supports those repo-local config keys.
+
 ## Use It When
 
 - Your `AGENTS.md` is becoming too long to be useful.
@@ -124,7 +127,7 @@ These files are an adapter for Codex, not a separate architecture. Other agent r
 
 ## Not A Framework Lock-In
 
-This repo does not require a specific agent vendor, IDE, CI system, task runner, or programming language. The harness is mostly Markdown plus two small Python scripts. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
+This repo does not require a specific agent vendor, IDE, CI system, task runner, or programming language. The harness is mostly Markdown plus a few small Python scripts. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
 
 ## Open Source Status
 
