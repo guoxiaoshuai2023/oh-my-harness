@@ -54,6 +54,34 @@ After verification required:
 - Recompute protected file hashes or rerun the changed-path baseline.
 - A plain final diff is not sufficient proof when the worktree may contain unrelated changes.
 
+## Semantic Boundaries
+
+Use `N/A with reason` for LOW semantic risk tasks where these artifacts are not required.
+
+- Semantic risk tier:
+- Original Request Anchor identity/path:
+- Pass A baseline identity/path:
+- Outcome Contract identity/path:
+
+Outcome ACs to preserve:
+
+| Outcome AC | Source identity/path | Required evidence | Executor boundary |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+AC-pass-but-user-fail counterexample:
+
+-
+
+Semantic decisions executor must not make:
+
+-
+
+Semantic stop conditions:
+
+- Stop if a required semantic artifact is missing, mismatched, or cannot be loaded.
+- Stop if execution would require reinterpreting user intent, changing route choice, changing Outcome ACs, or replacing outcome evidence with implementation-only evidence.
+
 ## Required Context
 
 - Route docs to read:
