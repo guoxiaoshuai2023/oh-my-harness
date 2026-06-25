@@ -25,7 +25,12 @@
 - Validation commands are proportional: yes/no
 - Stop conditions are explicit: yes/no
 - External writes and secrets are handled safely: yes/no/not applicable
-- Semantic fidelity requirements are included: yes/no/not applicable
+- Original Request Anchor identity/path is included when required: yes/no/not applicable
+- Pass A baseline identity/path is included when required: yes/no/not applicable
+- Outcome Contract identity/path is included when required: yes/no/not applicable
+- Outcome ACs remain outcome-level and mapped to evidence: yes/no/not applicable
+- AC-pass-but-user-fail counterexample is handled when relevant: yes/no/not applicable
+- Executor is blocked from making semantic decisions: yes/no/not applicable
 
 ## Overall Decision
 
