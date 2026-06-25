@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Create source snapshot and coverage draft artifacts for an AGENTS.md file."""
+"""Create source snapshot and coverage draft artifacts for an AGENTS.md file.
+
+Snapshots include raw full source text. Do not run this on files containing
+secrets or sensitive material unless that capture is explicitly authorized and
+safe to store.
+"""
 
 from __future__ import annotations
 
@@ -186,6 +191,11 @@ def render_snapshot(source_path: Path, source_text: str, blocks: list[Block]) ->
         f"- SHA-256: `{sha256_text(source_text)}`",
         f"- Captured at: `{captured_at}`",
         f"- Source block count: `{len(blocks)}`",
+        "- Secret-safety caution: do not create or store a raw snapshot of files containing secrets, credentials, tokens, cookies, local storage, private keys, billing/payment data, permission data, or other sensitive material unless explicitly authorized and redacted.",
+        "",
+        "## Raw Full Source Text",
+        "",
+        fenced(source_text),
         "",
         "## Source Blocks",
         "",

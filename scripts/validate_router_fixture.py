@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Validate that a routing fixture mentions router triggers, routes, and ledger rules."""
+"""Smoke/coverage check for router trigger, route, and ledger-rule mentions.
+
+This is not a semantic equivalence verifier and is not proof of rule
+preservation, force preservation, duplicate equivalence, evaluator review, or
+main-thread review.
+"""
 
 from __future__ import annotations
 
@@ -97,7 +102,14 @@ def validate(router: Path, fixture: Path, ledger: Path | None) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "This smoke/coverage check confirms string/path mentions only. "
+            "It does not replace rule ledger review, force preservation review, "
+            "duplicate equivalence judgment, evaluator review, or main-thread review."
+        ),
+    )
     parser.add_argument("--router", type=Path, default=Path("AGENTS.md"))
     parser.add_argument("--fixture", type=Path, required=True)
     parser.add_argument("--ledger", type=Path)
@@ -109,7 +121,10 @@ def main() -> int:
             print(failure, file=sys.stderr)
         return 1
 
-    print("router fixture validation passed")
+    print(
+        "router fixture smoke/coverage check passed; this is not semantic "
+        "equivalence or rule-preservation proof"
+    )
     return 0
 
 

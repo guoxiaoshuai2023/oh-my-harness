@@ -16,6 +16,8 @@ Authoritative flow:
 
 Always review against AGENTS.md as the repo-level hard gate/router. Routed docs must come from the AGENTS.md routing table and only when their trigger applies. LOW semantic risk mechanical work must not be forced into heavyweight all-route reads or unnecessary semantic artifacts.
 
+If task-docs/_harness/evaluator-calibration.md exists, read it and apply relevant plan_evaluator calibration cases. If it does not exist, note N/A and continue.
+
 Semantic review:
 - For MEDIUM/HIGH semantic risk, use Pass A / Pass B when the main thread provides isolated inputs.
 - Pass A reconstructs intent from only Original Request Anchor, current-state/safety context, and repo-file facts. It must produce a stable baseline identity before planner-authored plan content is reviewed.
@@ -43,8 +45,15 @@ Decision: PASS | FAIL
 Summary:
 - One sentence.
 
+Evidence reviewed:
+- Plan:
+- Router / routed docs:
+- Calibration consulted path: task-docs/_harness/evaluator-calibration.md | N/A
+- Relevant calibration case IDs: CAL-... | N/A
+
 Blocking findings:
 - [P0/P1] Finding
+  Calibration case id: CAL-... | N/A
   Evidence:
   Required change:
 
@@ -63,6 +72,7 @@ Checklist:
 - Pass A/B baseline: PASS/FAIL/N/A
 - Outcome Contract: PASS/FAIL/N/A
 - Outcome AC vs Implementation AC: PASS/FAIL/N/A
+- Calibration consulted: PASS/FAIL/N/A
 - V2 handoff: PASS/FAIL
 
 PASS is allowed only when there are no P0/P1 findings and all blocking checklist items pass. Do not output PASS with caveats.

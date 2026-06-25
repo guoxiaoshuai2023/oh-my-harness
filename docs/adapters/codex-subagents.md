@@ -4,6 +4,8 @@ This repo includes a runnable Codex-style subagent adapter under `.codex/agents/
 
 The adapter is not the harness architecture itself. The architecture is the six logical responsibilities, router docs, protocols, templates, contracts, and evidence rules. The `.codex/agents/*.toml` files are one concrete way to expose those responsibilities in Codex.
 
+Orchestration remains a main-thread workflow responsibility. It coordinates the six logical responsibilities and does not add a fixed seventh role.
+
 ## Active Agents
 
 | File | Agent name | Role |

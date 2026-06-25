@@ -4,7 +4,7 @@ Use this before publishing `oh-my-harness` to GitHub.
 
 ## Required Decisions
 
-- Choose a license. Common options include MIT, Apache-2.0, BSD-3-Clause, and MPL-2.0. This repo intentionally does not choose one for you.
+- Choose a license. No license has been selected for this repo. License selection is a release-blocking owner decision before publication.
 - Decide whether to include a `CODE_OF_CONDUCT.md`.
 - Decide whether to include `CONTRIBUTING.md`.
 - Decide whether to accept issues, discussions, pull requests, or all three.
@@ -18,11 +18,13 @@ Use this before publishing `oh-my-harness` to GitHub.
 rg -n "(token|secret|password|client_secret|api_key|private_key)" .
 ```
 
-- Confirm route files exist:
+- Confirm route files exist with the router fixture smoke/coverage check:
 
 ```sh
 python3 scripts/validate_router_fixture.py --router AGENTS.md --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
 ```
+
+This check verifies trigger, route, path, and optional rule mentions only. It is not semantic proof and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
 - Confirm scripts compile and subagent TOML parses:
 

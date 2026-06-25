@@ -26,6 +26,8 @@ python3 scripts/extract_agents_source.py AGENTS.md \
 
 Record the SHA-256 in the plan, contract, and final report.
 
+The generated snapshot includes raw full source text and source block IDs. Do not snapshot files containing secrets, credentials, tokens, cookies, local storage, private keys, billing/payment data, permission data, or other sensitive material unless explicitly authorized and redacted.
+
 ## 3. Build Coverage Manifest
 
 Every source block must appear exactly once as:
@@ -78,7 +80,7 @@ Build a forward and reverse fixture:
 - Every Rule ID maps to a scenario or exact always-on hard gate.
 - LOW-risk work proves it does not read the full route stack.
 
-Validate:
+Run the smoke/coverage check:
 
 ```sh
 python3 scripts/validate_router_fixture.py \
@@ -86,6 +88,8 @@ python3 scripts/validate_router_fixture.py \
   --fixture task-docs/<routing-fixture>.md \
   --ledger task-docs/<rule-ledger>.md
 ```
+
+This helper checks that router triggers, route paths, and optional Rule IDs are mentioned in the fixture. It is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
 ## 8. Report Precisely
 
