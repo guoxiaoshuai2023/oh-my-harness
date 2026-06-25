@@ -7,6 +7,15 @@
 - Captured at:
 - Captured by:
 - Purpose:
+- Secret-safety caution: do not create or store a raw snapshot of files containing secrets, credentials, tokens, cookies, local storage, private keys, billing/payment data, permission data, or other sensitive material unless explicitly authorized and redacted.
+
+## Raw Full Source Text
+
+The fenced block below must contain the exact full source text used to compute the SHA-256.
+
+````text
+
+````
 
 ## Source Blocks
 

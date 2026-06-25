@@ -9,10 +9,10 @@
 | Router | `AGENTS.md` keeps always-on gates, route triggers, v2 sequence, semantic entry points, and validation minimums visible. |
 | Routed docs | `docs/agent-routing/*` carries detailed rules that are read only when their triggers apply. |
 | Harness protocols | `task-docs/_harness/*` defines task loops, run directories, semantic fidelity, and artifact contracts. |
-| Traceability artifacts | Source snapshots, coverage manifests, rule ledgers, and routing fixtures prove that rules were preserved during migration. |
+| Traceability artifacts | Source snapshots, coverage manifests, rule ledgers, and routing fixtures support rule-preservation review during migration. |
 | Templates | Reusable Markdown files make the harness portable without hard-coding one project's domain. |
 | Runtime adapters | `.codex/agents/*` maps the six logical responsibilities into one concrete subagent configuration format. |
-| Scripts | Small stdlib-only helpers automate source block extraction and route fixture checks. |
+| Scripts | Small stdlib-only helpers automate source block extraction and router fixture smoke/coverage checks. |
 
 ## Router Pattern
 
@@ -34,10 +34,12 @@ Use four evidence artifacts:
 
 | Artifact | Purpose |
 | --- | --- |
-| Source snapshot | Immutable full-text copy of the source with stable block IDs and SHA-256. |
+| Source snapshot | Immutable raw full-text copy of the source with stable block IDs and SHA-256. Do not snapshot secret-bearing files unless explicitly authorized and redacted. |
 | Source coverage manifest | One row for every source block, classified as Rule ID, Non-normative, or Duplicate. |
 | Rule preservation ledger | One entry for every normative rule, mapping source force to target force and route trigger. |
-| Routing scenario fixture | Forward and reverse coverage of route triggers and Rule IDs. |
+| Routing scenario fixture | Forward and reverse coverage of route triggers and Rule IDs. The validator is a smoke/coverage check for trigger, route, path, and rule mentions only. |
+
+The router fixture validator is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
 ## Risk Model
 

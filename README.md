@@ -26,7 +26,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
 - **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
-- **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks and validating router fixture coverage.
+- **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks and running router fixture smoke/coverage checks.
 - **Adoption docs** for migrating an existing project into the harness safely.
 
 ## Repository Tour
@@ -41,7 +41,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic risk protocol and v2 loop rules. |
 | `task-docs/_harness/run-directory-protocol.md` | Run directory, accepted contract, evidence, and result QA conventions. |
 | `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
-| `scripts/` | Standard-library Python helpers for snapshot extraction and router fixture validation. |
+| `scripts/` | Standard-library Python helpers for snapshot extraction and router fixture smoke/coverage checks. |
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
 | `docs/adoption/` | Migration runbook and open-source release checklist. |
 
@@ -64,13 +64,15 @@ python3 scripts/extract_agents_source.py AGENTS.md \
   --coverage task-docs/agents-source-coverage.md
 ```
 
-After you build a routing scenario fixture, validate route coverage:
+After you build a routing scenario fixture, run the smoke/coverage check:
 
 ```sh
 python3 scripts/validate_router_fixture.py \
   --router AGENTS.md \
   --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
 ```
+
+This helper checks trigger text, route paths, and optional ledger Rule ID mentions. It is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
 ## How It Works
 
@@ -109,4 +111,4 @@ This repo does not require a specific agent vendor, IDE, CI system, task runner,
 
 ## Open Source Status
 
-This repo is structured for open-source publication, but no license has been selected yet. Choose a license before publishing. See `docs/adoption/open-source-release-checklist.md`.
+This repo is structured for open-source publication, but no license has been selected yet. License selection is a release-blocking owner decision before publishing. See `docs/adoption/open-source-release-checklist.md`.
