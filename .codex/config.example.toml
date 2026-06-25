@@ -1,0 +1,12 @@
+# Optional Codex repo config example for downstream projects.
+# Copy this file to `.codex/config.toml` only if your Codex version supports
+# repo-local config with these keys.
+
+[features]
+multi_agent = true
+
+[multi_agent]
+# Keep orchestration as a main-thread responsibility. Subagents should not
+# spawn their own subagent trees for this harness unless a downstream project
+# explicitly opts into a deeper topology.
+max_depth = 1
