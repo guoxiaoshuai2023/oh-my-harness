@@ -12,7 +12,7 @@
 | Traceability artifacts | Source snapshots, coverage manifests, rule ledgers, and routing fixtures support rule-preservation review during migration. |
 | Templates | Reusable Markdown files make the harness portable without hard-coding one project's domain. |
 | Runtime adapters | `.codex/agents/*` maps the six logical responsibilities into one concrete subagent configuration format. |
-| Scripts | Small stdlib-only helpers automate source block extraction and router fixture smoke/coverage checks. |
+| Scripts | Small stdlib-only helpers automate source block extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
 
 ## Router Pattern
 
@@ -38,6 +38,8 @@ Use four evidence artifacts:
 | Source coverage manifest | One row for every source block, classified as Rule ID, Non-normative, or Duplicate. |
 | Rule preservation ledger | One entry for every normative rule, mapping source force to target force and route trigger. |
 | Routing scenario fixture | Forward and reverse coverage of route triggers and Rule IDs. The validator is a smoke/coverage check for trigger, route, path, and rule mentions only. |
+
+`scripts/validate_rule_preservation.py` checks the structural traceability layer: each source block appears once in the coverage manifest, coverage Rule IDs are represented in the ledger, strong `MUST` / `MUST NOT` / `STOP` force is not downgraded, and duplicate rows explicitly assert equivalence across force, trigger, stop condition, forbidden action, required action, and safety boundary.
 
 The router fixture validator is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 

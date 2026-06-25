@@ -26,7 +26,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
 - **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
-- **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks and running router fixture smoke/coverage checks.
+- **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks, checking rule-preservation traceability, and running router fixture smoke/coverage checks.
 - **Adoption docs** for migrating an existing project into the harness safely.
 
 ## Repository Tour
@@ -41,7 +41,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic risk protocol and v2 loop rules. |
 | `task-docs/_harness/run-directory-protocol.md` | Run directory, accepted contract, evidence, and result QA conventions. |
 | `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
-| `scripts/` | Standard-library Python helpers for snapshot extraction and router fixture smoke/coverage checks. |
+| `scripts/` | Standard-library Python helpers for snapshot extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
 | `docs/adoption/` | Migration runbook and open-source release checklist. |
 
@@ -50,10 +50,16 @@ AI agents are good at doing work. They are less reliable when the work depends o
 Copy the harness into a target repo:
 
 ```sh
-cp AGENTS.md /path/to/target-repo/
-cp -R .codex /path/to/target-repo/
-cp -R docs/agent-routing /path/to/target-repo/docs/
-cp -R task-docs/_harness /path/to/target-repo/task-docs/
+TARGET=/path/to/target-repo
+mkdir -p "$TARGET/docs" "$TARGET/task-docs" "$TARGET/scripts"
+cp AGENTS.md "$TARGET/"
+cp -R .codex "$TARGET/"
+cp -R docs/agent-routing "$TARGET/docs/"
+cp -R task-docs/_harness "$TARGET/task-docs/"
+cp scripts/extract_agents_source.py \
+  scripts/validate_rule_preservation.py \
+  scripts/validate_router_fixture.py \
+  "$TARGET/scripts/"
 ```
 
 Before shrinking an existing `AGENTS.md`, create source traceability artifacts:
@@ -63,6 +69,17 @@ python3 scripts/extract_agents_source.py AGENTS.md \
   --snapshot task-docs/agents-source-snapshot.md \
   --coverage task-docs/agents-source-coverage.md
 ```
+
+After you complete the source coverage manifest and rule preservation ledger, run the structural preservation check:
+
+```sh
+python3 scripts/validate_rule_preservation.py \
+  --snapshot task-docs/agents-source-snapshot.md \
+  --coverage task-docs/agents-source-coverage.md \
+  --ledger task-docs/rule-preservation-ledger.md
+```
+
+This helper checks source block coverage, rule-ledger mapping, strong-force preservation, and duplicate coverage evidence. It does not replace semantic equivalence review of the migrated wording.
 
 After you build a routing scenario fixture, run the smoke/coverage check:
 

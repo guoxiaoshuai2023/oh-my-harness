@@ -26,10 +26,16 @@ python3 scripts/validate_router_fixture.py --router AGENTS.md --fixture task-doc
 
 This check verifies trigger, route, path, and optional rule mentions only. It is not semantic proof and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
 
+- Confirm completed router migrations run the rule-preservation structural check:
+
+```sh
+python3 scripts/validate_rule_preservation.py --snapshot task-docs/<source-snapshot>.md --coverage task-docs/<source-coverage>.md --ledger task-docs/<rule-ledger>.md
+```
+
 - Confirm scripts compile and subagent TOML parses:
 
 ```sh
-python3 -m py_compile scripts/extract_agents_source.py scripts/validate_router_fixture.py
+python3 -m py_compile scripts/extract_agents_source.py scripts/validate_rule_preservation.py scripts/validate_router_fixture.py
 python3 - <<'PY'
 import pathlib, tomllib
 for path in sorted(pathlib.Path(".codex/agents").glob("*.toml")):

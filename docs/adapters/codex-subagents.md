@@ -6,6 +6,12 @@ The adapter is not the harness architecture itself. The architecture is the six 
 
 Orchestration remains a main-thread workflow responsibility. It coordinates the six logical responsibilities and does not add a fixed seventh role.
 
+## Optional Fan-Out Guard
+
+`.codex/config.example.toml` is a copyable example for downstream repos that want a repo-local Codex config. If your Codex version supports those keys, copy it to `.codex/config.toml` to keep subagent fan-out at one level with `multi_agent.max_depth = 1`.
+
+The example is optional because the six-role harness is the architecture; Codex config support and exact key availability are runtime details.
+
 ## Active Agents
 
 | File | Agent name | Role |

@@ -57,6 +57,17 @@ For every normative rule, record:
 
 `MUST`, `MUST NOT`, and `STOP` cannot be downgraded.
 
+Run the structural rule-preservation check after the coverage manifest and ledger are filled:
+
+```sh
+python3 scripts/validate_rule_preservation.py \
+  --snapshot task-docs/<source-snapshot>.md \
+  --coverage task-docs/<source-coverage>.md \
+  --ledger task-docs/<rule-ledger>.md
+```
+
+This check proves mechanical traceability, not full semantic equivalence. It fails when a source block is missing or duplicated in coverage, a coverage Rule ID is missing from the ledger, a strong-force rule is downgraded, or a duplicate row lacks explicit equivalence evidence across force, trigger, stop condition, forbidden action, required action, and safety boundary.
+
 ## 5. Create Routed Docs
 
 Move long-form details into routed docs. Keep route paths stable. Do not merge, rename, split, or substitute route docs during execution unless the plan explicitly allows that architecture change.

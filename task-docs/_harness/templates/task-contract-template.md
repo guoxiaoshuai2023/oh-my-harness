@@ -31,6 +31,29 @@ Protected read-only paths:
 
 - 
 
+## Protected-Path Baseline Plan
+
+Baseline mode:
+
+- Before/after hashes / changed-path baseline / N/A with reason:
+
+Before hashes for protected files:
+
+| Path | Before hash | Command or evidence |
+| --- | --- | --- |
+|  |  |  |
+
+Changed-path baseline for protected directories:
+
+| Protected directory | Baseline command or evidence | Allowed changed paths, if any |
+| --- | --- | --- |
+|  |  |  |
+
+After verification required:
+
+- Recompute protected file hashes or rerun the changed-path baseline.
+- A plain final diff is not sufficient proof when the worktree may contain unrelated changes.
+
 ## Required Context
 
 - Route docs to read:
