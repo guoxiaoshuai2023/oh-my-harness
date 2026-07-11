@@ -16,6 +16,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check normative diff whitespace
+        shell: bash
+        run: |
+          # Run artifacts are SHA-addressed evidence. Validate the normative
+          # repository diff without rewriting immutable history bytes.
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git diff --check \
+              "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+              -- . ':(exclude)task-docs/history/**'
+          else
+            git show --check --format= HEAD -- . ':(exclude)task-docs/history/**'
+          fi
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -43,8 +58,25 @@ jobs:
           assert {path.name for path in paths} == expected
           for path in paths:
               with path.open("rb") as handle:
-                  tomllib.load(handle)
-          print("parsed exactly six Codex agent profiles")
+                  data = tomllib.load(handle)
+              if "evaluator" in path.name:
+                  assert data["sandbox_mode"] == "read-only", path
+                  prompt = data["developer_instructions"]
+                  required = [
+                      "canonical evaluator-calibration identity and path",
+                      "STOP before review",
+                      "Consult that supplied canonical source before deciding",
+                      "never substitutes for primary",
+                      "Consulted calibration path",
+                      "Relevant calibration case IDs",
+                      "do not edit, repair, complete",
+                  ]
+                  for text in required:
+                      assert text in prompt, (path, text)
+          print(
+              "parsed exactly six Codex agent profiles; "
+              "evaluator read-only/calibration invariants passed"
+          )
           PY
 
       - name: Run router fixture smoke check
@@ -87,6 +119,45 @@ jobs:
           cc_decisions = {markdown_cells(row)[0]: markdown_cells(row)[-1] for row in cc_rows}
           assert cc_decisions["CC-NEGATIVE"] == "FAIL"
           assert cc_decisions["CC-DELIBERATE-FULL-V2"].startswith("PASS")
+          assert sum(
+              "packet applies the combined evaluator interface" in line
+              for line in matrix_lines
+          ) == 8
+
+          task_packet = Path(
+              "task-docs/_harness/templates/task-packet-template.md"
+          ).read_text(encoding="utf-8")
+          for text in [
+              "Canonical evaluator-calibration identity:",
+              "Canonical evaluator-calibration path:",
+              "consult the canonical evaluator-calibration source above before deciding",
+              "Consulted calibration path:",
+              "Relevant calibration case IDs:",
+              "must `STOP` before launch",
+          ]:
+              assert text in task_packet, text
+
+          topology_surfaces = {
+              Path("task-docs/_harness/templates/orchestration-prompt-template.md"): [
+                  "Adaptive default — MUST",
+                  "Required complete v2 — MUST",
+                  "Deliberate complete v2 — MAY",
+              ],
+              Path("task-docs/_harness/templates/plan-review-template.md"): [
+                  "Adaptive-default state `MUST`",
+                  "Required-complete-v2 state `MUST`",
+                  "Deliberate-complete-v2 state `MAY`",
+              ],
+              Path("task-docs/_harness/templates/result-qa-template.md"): [
+                  "Adaptive-default state `MUST`",
+                  "Required-complete-v2 state `MUST`",
+                  "Deliberate-complete-v2 state `MAY`",
+              ],
+          }
+          for path, required in topology_surfaces.items():
+              text = path.read_text(encoding="utf-8")
+              for marker in required:
+                  assert marker in text, (path, marker)
 
           calibration = Path("task-docs/_harness/evaluator-calibration.md").read_text(
               encoding="utf-8"
@@ -142,6 +213,7 @@ jobs:
           assert "rule-preservation proof" in validator
 
           print(
-              "adaptive structure passed; structural checks and router smoke are not semantic proof"
+              "adaptive structure and repaired invocation invariants passed; "
+              "structural checks and router smoke are not semantic proof"
           )
           PY
