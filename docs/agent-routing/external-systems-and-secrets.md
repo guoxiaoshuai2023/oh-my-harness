@@ -20,11 +20,15 @@ Before any external write:
 
 1. Confirm the exact target.
 2. Confirm the intended effect.
-3. Identify rollback or recovery if applicable.
-4. Prefer dry-run, preview, or plan mode when available.
-5. Get explicit user confirmation for high-impact actions.
+3. Confirm the scoped authority and stable execution boundary; use a frozen or versioned boundary for a high-impact write.
+4. Identify rollback or recovery if applicable.
+5. Prefer dry-run, preview, or plan mode when available.
+6. Get explicit user confirmation for high-impact actions.
+7. Perform applicable readback after the write without exposing sensitive material.
 
 Generic approval is not enough for high-impact writes. The confirmation must identify the action and target.
+
+HIGH Operational Risk or high-impact external-write results require producer-independent verification of the applicable safety and external-state evidence before main-thread final acceptance. The producer's own report or readback claim is not independent evidence.
 
 ## Evidence
 

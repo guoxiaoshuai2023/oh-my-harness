@@ -1,47 +1,65 @@
-# Result QA: <Task Name>
+# Independent Result QA: <Task Name>
 
 Decision: PASS | FAIL
 
-## Inputs
+## Inputs And Assigned Review
 
-- Accepted contract path:
-- Accepted contract identity/hash:
-- Implementation report path:
-- Plan path:
-- Outcome Contract identity/path, if any:
-- Pass A baseline identity/path, if any:
-- Relevant route docs:
+- Applicable authoritative boundary form:
+- Boundary identity/hash and path/reference:
+- Implementation report path/reference:
+- Plan/Original Request Anchor/Outcome Contract identities, when triggered:
+- Context/handoff identity, when used:
+- Assigned review type: code | factual | UX | security | semantic | external-state | combined bounded types
+- Reviewer independence from producer:
+- Relevant route docs and triggered gates:
 
-## Implementation Verification
+An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in explicit full v2; concise stable packets and other frozen/versioned forms are also valid when authorized.
+
+## Authority, Scope, And State Verification
 
 - Verdict: PASS | FAIL
-- Frozen `ACCEPTED_CONTRACT.md` followed:
-- Executor did not modify `ACCEPTED_CONTRACT.md`:
-- Allowed files and protected paths respected:
-- Required validation commands run:
-- Implementation AC evidence checked:
-- Executor report complete:
-- Repo state and changed files independently inspected:
+- Stable producer-nonmodifiable boundary existed before the attempt:
+- Producer did not modify/reinterpret the boundary:
+- Correct boundary level and escalation triggers applied:
+- Allowed files/effects and protected paths respected:
+- Dirty/shared/current-state before/after evidence independently checked:
+- Every actual delta classified; unexplained delta absent:
+- Required validation commands/checks independently inspected:
+- Implementation report complete and truthful:
 
-## Semantic Validation
+## Outcome And Semantic Verification
 
 - Verdict: PASS | FAIL | N/A
 - Required for this task: yes/no
-- Frozen Outcome Contract identity checked, if applicable:
-- Pass A baseline identity checked, if applicable:
-- Outcome AC evidence checked:
-- Outcome AC vs Implementation AC separation preserved:
-- AC-pass-but-user-fail counterexample checked when relevant:
-- Current-state evidence trigger satisfied when relevant:
-- Executor did not make unresolved semantic decisions:
+- Original Request Anchor / Pass A / Outcome Contract identities checked:
+- Outcome ACs independently checked against primary evidence:
+- Outcome evidence remains distinct from implementation-only evidence:
+- AC-pass-but-user-fail counterexample exercised:
+- Current-state source/freshness checked:
+- Producer made no unresolved semantic decision:
+- HIGH-risk producer-independent semantic/safety/external evidence satisfied:
 
-## Overall Decision
+## Adaptive Topology And Gate Verification
 
-- Verdict: PASS | FAIL
-- Rule: Overall Decision must match `Decision`.
-- Rule: Overall Decision is FAIL if Implementation Verification is FAIL.
-- Rule: Overall Decision is FAIL if required Semantic Validation is FAIL.
-- Rule: PASS only when both required verdicts pass, every required AC is independently verified, and no P0/P1 finding remains.
+- Selected topology preserved every triggered gate: PASS/FAIL
+- Omitted roles/stages had an evidence-backed rationale and did not omit controls: PASS/FAIL/N/A
+- Explicit full-v2 request/stricter policy preserved: PASS/FAIL/N/A
+- Task packet route binding used proved inheritance or explicit routes/gates: PASS/FAIL/N/A
+- Dependencies, branch state, obsolete/cancellation conditions, and synthesis checked: PASS/FAIL/N/A
+- Review type matches the actual correctness/risk question: PASS/FAIL
+- No producer self-review was counted as independent: PASS/FAIL
+
+## Retry And Failure Classification
+
+- Review finding is within assigned review type and tied to active authority: yes/no
+- Decisive evidence for PASS/FAIL:
+- Failure origin, if any: implementation | prompt | missing/stale evidence | plan/contract | role/capability mismatch | evaluator misunderstanding/unsupported/wrong type | user-intent ambiguity | external environment/permission/tool/service/state
+- Quality failure valid for stage-local count: yes/no/N/A
+- Quality failure valid for retry-domain cumulative count: yes/no/N/A
+- Artifact-free operational failure only: yes/no/N/A
+- Counter continuity and intervention/exhaustion/resume handling checked:
+- Unsupported finding disposition: reject with evidence, leave producer counts unchanged, and correct review path | N/A
+- Failure route: same-boundary executor | new versioned solution boundary | planning | corrected reviewer/packet | user decision/blocker | N/A
 
 ## Calibration
 
@@ -50,34 +68,35 @@ Decision: PASS | FAIL
 
 ## Independent Evidence Checklist
 
-- `ACCEPTED_CONTRACT.md` path and identity/hash:
+- Applicable boundary identity/content:
 - Implementation report:
-- File/diff inspection:
+- Actual file/diff/state inspection:
 - Command output:
 - Runtime or user-visible behavior:
-- Current-state evidence:
-- Generated artifacts or screenshots:
-- Evidence directory/index:
-- `AGENTS.md` router and triggered routed docs:
-- Outcome Contract and Pass A baseline, if applicable:
-- Secret/sensitive-material safety scan:
-- Not checked and why:
+- Current/external-state readback:
+- Generated artifacts/screenshots:
+- Router and triggered route/gate evidence:
+- Semantic artifacts:
+- Secret/sensitive-material safety:
+- What was not checked and why:
+
+Producer self-report is a claim, not independent evidence.
 
 ## Acceptance Criteria Verification
 
-| AC | Type | Result | Independent evidence |
-| --- | --- | --- | --- |
-| AC1 | Outcome AC / Implementation AC | PASS / FAIL |  |
+| AC | Type | Result | Independent primary evidence | Discriminating failure signal |
+| --- | --- | --- | --- | --- |
+| AC1 | Outcome / Implementation / Safety | PASS/FAIL |  |  |
 
 Outcome AC coverage summary:
 
 -
 
-Implementation AC coverage summary:
+Implementation/safety AC coverage summary:
 
 -
 
-AC-pass-but-user-fail check:
+AC-pass-but-user-fail result:
 
 -
 
@@ -85,37 +104,16 @@ AC-pass-but-user-fail check:
 
 List findings by severity. Use `P0`, `P1`, `P2`, or `P3`.
 
-| Severity | Finding | Evidence | Required fix | Calibration case |
+| Severity | Finding | Primary evidence | Required fix/route | Calibration case |
 | --- | --- | --- | --- | --- |
 |  |  |  |  | CAL-... / N/A |
 
-## Failure Routing
+## Overall Decision
 
-- Implementation failure: executor missed the frozen contract, changed out-of-scope files, or did not produce required evidence; send back to a new executor run with the same frozen `ACCEPTED_CONTRACT.md`.
-- Contract insufficiency: the frozen contract cannot satisfy the approved task ACs, lacks necessary scope, or is unsafe/contradictory; stop execution and return to solution design.
-- Semantic plan/contract failure: required semantic validation fails because the plan or frozen contract dropped the Outcome Contract, converted Outcome ACs into implementation-only checks, omitted required current-state evidence, or left semantic decisions to the executor; return to planning or solution design as appropriate.
-- Result evaluator has no repair/redesign authority and must not rewrite the plan, contract, or implementation.
-- Executor must not guess or repair semantic gaps outside the same frozen `ACCEPTED_CONTRACT.md`.
+- Verdict: PASS | FAIL
+- Rule: Overall Verdict must equal `Decision`.
+- Rule: Any failed required authority/scope/implementation check makes Overall Verdict `FAIL`.
+- Rule: Any failed required outcome/semantic/safety/independence check makes Overall Verdict `FAIL`.
+- Rule: Any P0/P1, missing AC evidence, or unverified AC makes Overall Verdict `FAIL`.
 
-## Checklist
-
-- Immutable `ACCEPTED_CONTRACT.md` followed: PASS/FAIL
-- No out-of-scope changes: PASS/FAIL
-- Implementation Verification completed: PASS/FAIL
-- Semantic Validation completed when required: PASS/FAIL/N/A
-- Overall Decision matches Decision: PASS/FAIL
-- Overall Decision correctly fails if implementation or required semantic validation fails: PASS/FAIL
-- Every AC independently verified: PASS/FAIL
-- Outcome AC evidence independently checked: PASS/FAIL/N/A
-- AC-pass-but-user-fail risk handled when relevant: PASS/FAIL/N/A
-- User-visible or runtime behavior verified when relevant: PASS/FAIL/N/A
-- Current-state evidence verified when relevant: PASS/FAIL/N/A
-- Secret/sensitive-material safe: PASS/FAIL
-- Calibration consulted: PASS/FAIL/N/A
-- Relevant calibration case IDs reported: PASS/FAIL/N/A
-
-## PASS Rule
-
-PASS only when all required ACs pass, all required evidence was independently checked, the accepted contract was followed, Implementation Verification is PASS, required Semantic Validation is PASS, Overall Decision is PASS, and there are no P0/P1 findings.
-
-Do not output `PASS with caveats`. Any P0/P1 finding, missing acceptance-criteria evidence, unverified acceptance criterion, failed implementation verification, or failed required semantic validation is a FAIL.
+Do not output `PASS with caveats`. PASS requires every required AC and triggered gate to be independently verified, strict evidence to support the assigned review judgment, and no P0/P1 finding. This QA does not perform repairs, redesign, boundary edits, or main-thread final acceptance.

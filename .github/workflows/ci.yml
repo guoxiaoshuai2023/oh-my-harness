@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile helper scripts
+        run: python -m py_compile scripts/*.py
+
+      - name: Parse Codex agent profiles
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          expected = {
+              "harness-executor.toml",
+              "harness-plan-evaluator.toml",
+              "harness-planner.toml",
+              "harness-result-evaluator.toml",
+              "harness-solution-designer.toml",
+              "harness-solution-evaluator.toml",
+          }
+          paths = sorted(Path(".codex/agents").glob("*.toml"))
+          assert {path.name for path in paths} == expected
+          for path in paths:
+              with path.open("rb") as handle:
+                  tomllib.load(handle)
+          print("parsed exactly six Codex agent profiles")
+          PY
+
+      - name: Run router fixture smoke check
+        run: |
+          python scripts/validate_router_fixture.py \
+            --router AGENTS.md \
+            --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
+
+      - name: Validate adaptive orchestration structure
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def markdown_cells(row: str) -> list[str]:
+              return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+          matrix_path = Path("task-docs/_harness/adaptive-orchestration-acceptance-matrix.md")
+          matrix_lines = matrix_path.read_text(encoding="utf-8").splitlines()
+
+          as_rows = [line for line in matrix_lines if re.match(r"^\| AS-\d{2} \|", line)]
+          assert len(as_rows) == 31
+          assert [markdown_cells(row)[0] for row in as_rows] == [
+              f"AS-{number:02d}" for number in range(1, 32)
+          ]
+          assert all(len(markdown_cells(row)) == 11 for row in as_rows)
+          assert all(markdown_cells(row)[-1] == "PASS" for row in as_rows)
+          assert not any(line.startswith("| AS-32 |") for line in matrix_lines)
+
+          cc_rows = [line for line in matrix_lines if re.match(r"^\| CC-", line)]
+          expected_cc = [
+              "CC-LOW",
+              "CC-MEDIUM",
+              "CC-HIGH",
+              "CC-FULL-V2",
+              "CC-NEGATIVE",
+              "CC-DELIBERATE-FULL-V2",
+          ]
+          assert [markdown_cells(row)[0] for row in cc_rows] == expected_cc
+          cc_decisions = {markdown_cells(row)[0]: markdown_cells(row)[-1] for row in cc_rows}
+          assert cc_decisions["CC-NEGATIVE"] == "FAIL"
+          assert cc_decisions["CC-DELIBERATE-FULL-V2"].startswith("PASS")
+
+          calibration = Path("task-docs/_harness/evaluator-calibration.md").read_text(
+              encoding="utf-8"
+          )
+          adaptive_headings = re.findall(
+              r"^### Case (CAL-ADAPT-\d{3}) - ", calibration, re.MULTILINE
+          )
+          assert adaptive_headings == [f"CAL-ADAPT-{number:03d}" for number in range(1, 11)]
+          required_fields = [
+              "Case id:",
+              "Category:",
+              "Case type:",
+              "Applies to:",
+              "Task pattern / bad pattern:",
+              "Evaluator incorrectly decided:",
+              "Expected decision:",
+              "Why it fails:",
+              "Controlling rule:",
+              "Missing evidence / evidence needed:",
+              "Required evaluator/main-thread response:",
+              "New evaluator rule:",
+              "Reusable positive/negative case:",
+              "Relevant prompt/template targets:",
+          ]
+          for index, case_id in enumerate(adaptive_headings):
+              start = calibration.index(f"### Case {case_id} - ")
+              if index + 1 < len(adaptive_headings):
+                  end = calibration.index(f"### Case {adaptive_headings[index + 1]} - ")
+              else:
+                  end = len(calibration)
+              section = calibration[start:end]
+              for field in required_fields:
+                  assert section.count(field) == 1, (case_id, field)
+
+          surfaces = [
+              Path("task-docs/_harness/templates/routing-scenario-matrix-template.md"),
+              Path("README.md"),
+              Path("docs/architecture.md"),
+              Path("docs/adoption/router-refactor-runbook.md"),
+              Path("examples/minimal-router/AGENTS.md"),
+          ]
+          for path in surfaces:
+              text = path.read_text(encoding="utf-8")
+              assert "smallest sufficient" in text, path
+              assert "MUST" in text, path
+              assert "stricter" in text and "policy" in text, path
+              assert "MAY" in text, path
+              assert "deliberate" in text.lower(), path
+
+          validator = Path("scripts/validate_router_fixture.py").read_text(encoding="utf-8")
+          assert "not a semantic equivalence verifier" in validator
+          assert "router fixture smoke/coverage check passed" in validator
+          assert "rule-preservation proof" in validator
+
+          print(
+              "adaptive structure passed; structural checks and router smoke are not semantic proof"
+          )
+          PY

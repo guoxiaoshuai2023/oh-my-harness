@@ -1,6 +1,6 @@
 # oh-my-harness Repo Router
 
-This file is the repo-level router for agents working in `oh-my-harness`. Keep session-global hard gates and route triggers visible here; read routed docs only when their trigger applies. LOW semantic risk mechanical tasks stay lightweight and must not read the full routed-doc stack by default.
+This file is the repo-level router for agents working in `oh-my-harness`. Keep session-global hard gates and route triggers visible here; read routed docs only when their trigger applies. Using the harness means adaptive main-thread governance by default, not automatic invocation of every role. LOW semantic risk mechanical tasks stay lightweight and must not read the full routed-doc stack by default.
 
 ## Always-On Hard Gates
 
@@ -19,6 +19,7 @@ Routed docs below are the only required `AGENTS.md` route targets. Traceability 
 | Trigger | Route |
 | --- | --- |
 | Routing-doc index, trigger convention, route maintenance, or routed-doc versus traceability-artifact distinction | `docs/agent-routing/README.md` |
+| Using the harness, selecting or revising execution topology, delegation, parallelism, route/gate binding, stable write boundary, intervention, retry, cancellation, synthesis, or producer-independent verification | `task-docs/_harness/adaptive-orchestration-protocol.md` |
 | External API, production system, SaaS admin, database, credentials, secrets, auth, tokens, cookies, localStorage, billing, payment, permission, or key boundary | `docs/agent-routing/external-systems-and-secrets.md` |
 | Existing user-visible surface, generated artifact, live data, current state, freshness requirement, stale screenshot risk, or evidence of present behavior | `docs/agent-routing/current-state-evidence.md` |
 | Publish, deploy, delete, migration, restore, bulk write, irreversible change, permission change, billing/payment action, key/secret action, or other high-impact action | `docs/agent-routing/high-risk-actions.md` |
@@ -27,13 +28,15 @@ Routed docs below are the only required `AGENTS.md` route targets. Traceability 
 | Validation, implementation report, evidence standards, test strategy, manual verification, maintenance entry, or final reporting | `docs/agent-routing/validation-and-reporting.md` |
 | MEDIUM/HIGH semantic risk, cross-surface work, subjective quality, semantic drift, `AC-pass-but-user-fail`, plan evaluation `Pass A`/`Pass B`, solution review, result QA, or any v2 harness flow | `task-docs/_harness/semantic-fidelity-protocol.md` |
 
-## V2 Harness Sequence
+## Adaptive Harness Control Plane
 
-- Approved `task-docs/` work uses the v2 sequence: `planner` -> `plan evaluator` -> `solution designer` -> `solution evaluator` negotiation until strict PASS -> freeze `ACCEPTED_CONTRACT.md` -> `executor` -> `result evaluator` -> `main-thread` independent review.
-- The `executor` handles exactly one frozen `ACCEPTED_CONTRACT.md`; it must not execute later tasks, skip dependency order, write outside the contract, or repair out-of-contract problems.
-- The main thread owns orchestration and independent review. Plan review, solution review, result QA, semantic diff, compliance checks, and final acceptance are gates/checks, not delivery tasks.
-- Evaluators must not output `PASS with caveats`; any P0/P1 finding, missing acceptance-criteria evidence, or unverified acceptance criterion is a FAIL.
-- Do not add a fixed seventh agent. Semantic fidelity augments the six logical responsibilities; it does not create a new mandatory delivery role.
+- The main thread owns topology selection, revision, synthesis, evidence arbitration, intervention, and final acceptance. It must select the smallest sufficient combination of direct work, delegated capabilities, independent review, durable artifacts, and triggered gates.
+- Roles and workflow stages may be omitted when they add no material value; triggered gates may not. HIGH risk requires complete applicable control coverage, not automatic use of all six roles.
+- Read `task-docs/_harness/adaptive-orchestration-protocol.md` for the normative decision, delegation, boundary, dependency, retry, and verification rules. Ordinary LOW-risk work must not inherit a full-route read or durable artifacts without a factual trigger.
+- The complete v2 flow remains compatible and must run when explicitly requested: `planner` -> `plan evaluator` -> `solution designer` -> `solution evaluator` negotiation until strict PASS -> freeze `ACCEPTED_CONTRACT.md` -> `executor` -> `result evaluator` -> main-thread final review. Its retry and intervention controls remain active.
+- In the full v2 flow, the `executor` handles exactly one frozen `ACCEPTED_CONTRACT.md`; it must not execute later tasks, skip dependency order, write outside the contract, or repair out-of-contract problems.
+- Plan review, solution review, result QA, semantic diff, compliance checks, and final acceptance are gates/checks, not delivery tasks. Evaluators must not output `PASS with caveats`; any P0/P1 finding, missing acceptance-criteria evidence, or unverified acceptance criterion is a FAIL.
+- Do not add a fixed seventh agent. Semantic fidelity augments the available logical responsibilities; it does not create a new mandatory delivery role.
 
 ## Semantic Fidelity Entry Point
 

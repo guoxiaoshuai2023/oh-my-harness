@@ -5,6 +5,7 @@ Read this doc when planning or revising `task-docs/` work, especially LOW semant
 ## Planning Scale
 
 - Prefer the smallest plan that produces a verifiable deliverable.
+- Under adaptive main-thread governance, select the smallest sufficient topology from task facts, risk, evidence needs, dependencies, and delegation value. Named roles and stages are optional when their controls are otherwise satisfied; triggered gates are not optional.
 - Do not default to heavyweight compliance, audit, or multi-round process for ordinary low-risk work.
 - Increase process weight for high-impact actions, MEDIUM/HIGH semantic risk, broad cross-surface changes, irreversible actions, or external system writes.
 - Ordinary tasks should be short, executable, and verifiable: goal, boundary, key steps, acceptance criteria, evidence, and validation.
@@ -12,6 +13,7 @@ Read this doc when planning or revising `task-docs/` work, especially LOW semant
 - Review, plan evaluation, solution review, result QA, semantic diff, compliance checks, and final acceptance are harness gates/checks, not delivery tasks.
 - Risk control must serve delivery. When no specific risk exists, prefer direct, reversible, inspectable implementation.
 - LOW semantic risk mechanical tasks stay lightweight and must not be forced to read every routed doc by default.
+- For MEDIUM/HIGH-risk, multi-agent, or multi-step work, make the selected topology, triggered gates, key dependencies, and intentionally omitted major stages recoverable from a plan, packet, run context, or equivalent durable record.
 
 ## Delivery Unit Test
 
