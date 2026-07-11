@@ -41,6 +41,19 @@ Choose and complete at least one valid binding. Repository discoverability by it
 
 If runtime inheritance cannot be demonstrated, explicitly list every triggered route and gate. A statement that rules “exist in the repo” does not bind them.
 
+## Evaluator-Only Canonical Calibration Binding
+
+Complete this section for every evaluator invocation. For an ordinary producer invocation, state `not applicable — producer invocation`; that producer-only value is not valid in an evaluator packet.
+
+- Evaluator invocation: yes | no — producer invocation
+- Canonical evaluator-calibration identity: <stable identity/version or content SHA-256; required for every evaluator>
+- Canonical evaluator-calibration path: `task-docs/_harness/evaluator-calibration.md`
+- Pre-verdict instruction: consult the canonical evaluator-calibration source above before deciding; independently inspect the assigned primary evidence rather than treating calibration as outcome proof.
+- Required evaluator return field: `Consulted calibration path: <the path actually consulted>`
+- Required evaluator return field: `Relevant calibration case IDs: <applicable case IDs> | N/A`
+
+For an evaluator, the identity, canonical path, consultation instruction, and both return fields are non-optional. `N/A` is permitted only for `Relevant calibration case IDs` after the canonical source was consulted. It cannot replace the identity, path, consultation, primary-evidence inspection, or verdict.
+
 ## Delegation And Fan-Out Authority
 
 - Nested delegation: `prohibited` by default | `authorized within the bounds below`
@@ -111,8 +124,10 @@ Any `yes` escalation trigger requires a frozen/versioned boundary. `ACCEPTED_CON
 - Separate facts, assumptions, inferences, and uncertainty:
 - Report blockers and stop/escalation state:
 - Report remaining risk and unchecked areas:
+- Evaluator only — Consulted calibration path: <required exact path returned by the evaluator>
+- Evaluator only — Relevant calibration case IDs: <applicable IDs, or `N/A` only after consultation>
 - Do not claim main-thread acceptance, independent review, external action, readback, validation, or another role's work unless it actually occurred.
 
 ## Packet Validity Check
 
-The packet is invalid and the invocation must not start when any required field is absent, authority is mutable or uncitable, route/gate binding relies only on discoverability, a triggered extension is omitted, nested delegation lacks every bound and executable budget, or the expected result cannot be integrated into the run.
+The packet is invalid and the invocation must not start when any required field is absent, authority is mutable or uncitable, route/gate binding relies only on discoverability, a triggered extension is omitted, nested delegation lacks every bound and executable budget, or the expected result cannot be integrated into the run. An evaluator packet is also invalid and must `STOP` before launch when its canonical calibration identity/path, pre-verdict consultation instruction, or either required calibration return field is absent. A prefilled or returned case-ID `N/A` does not cure missing consultation.

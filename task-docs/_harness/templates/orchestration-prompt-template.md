@@ -15,9 +15,26 @@ This is a main-thread workflow prompt. It coordinates available harness capabili
 5. For every triggered gate, assign an owner, required primary evidence, and decision point. Optional roles or stages never make a triggered gate optional.
 6. Stop on material ambiguity, missing authority, unsafe action, contradictory current state, or a required user decision. Do not seek or expose secrets, expand scope, add dependencies, or perform external/high-impact actions without their exact scoped authority and confirmation.
 
-## Select And Record The Smallest Sufficient Topology
+## Select And Record One Of Three Complete-v2 States
 
-Choose direct work, one focused capability, disjoint parallel investigation, competitive alternatives, bounded implementation plus the appropriate targeted review, the explicit full-v2 branch, or another explainable composition. Select from task facts, risk, evidence needs, dependencies, and expected delegation value—not role availability or artifact count.
+Apply exactly one applicable state without creating a fixed default pipeline:
+
+1. **Adaptive default — MUST:** absent a complete-v2 requirement trigger and absent a complete deliberate-selection record, the main thread `MUST` select the smallest sufficient topology from concrete task facts, risk, evidence needs, dependencies, and expected delegation value. It may choose direct work, one focused capability, disjoint parallel investigation, competitive alternatives, bounded implementation plus the appropriate targeted review, or another explainable composition.
+2. **Required complete v2 — MUST:** when the user explicitly requests the complete v2 loop or stricter downstream policy requires it, the main thread `MUST` select the complete ordered composition in `Complete-v2 Execution Branch` below. Adaptive omission cannot override this requirement.
+3. **Deliberate complete v2 — MAY:** without either requirement trigger, the main thread `MAY` select that same complete ordered composition only when it records all six task-specific fields below before launch. Missing or generic evidence makes this state invalid and returns selection to the adaptive default or a stop for missing authority; it never makes complete v2 automatic.
+
+Harness presence, Operational or Semantic Risk labels (including `HIGH`), role availability, artifact availability, habit, or inertia never automatically selects complete v2. Risk and scope can trigger controls without dictating all six roles. Guidance that defaults to full v2 or says only explicit request/policy can select it is invalid.
+
+### Deliberate Complete-v2 Selection Record — All Six Fields Required
+
+1. Concrete task facts that make the complete composition relevant:
+2. At least one smaller viable topology compared, including its specific control, evidence, or handoff gap:
+3. Non-duplicative value for each of all six roles (`planner`, `plan evaluator`, `solution designer`, `solution evaluator`, `executor`, `result evaluator`):
+4. Triggered gate owners, required primary evidence, dependencies, handoffs, and decisions across the composition:
+5. Positive marginal value after coordination cost and context impact:
+6. Active main-thread controls for synthesis, topology revision, intervention, finite retries, evidence arbitration, and final acceptance:
+
+Record the selected state, its trigger or six-field evidence, rejected smaller alternative when deliberate, and decision owner in durable state when the task is MEDIUM/HIGH-risk, multi-agent, or multi-step.
 
 - Delegate only for material specialization, independent judgment, context isolation, safe capacity, or time-to-evidence value.
 - For MEDIUM/HIGH-risk, multi-agent, or multi-step work, make the selected topology, triggered gates, dependencies, and intentionally omitted major stages recoverable in a plan, task packet, context record, or equivalent durable state.
@@ -29,6 +46,7 @@ Choose direct work, one focused capability, disjoint parallel investigation, com
 Every delegation receives a complete packet using `templates/task-packet-template.md` or equivalent stable content: objective and user-valued result, authority source, scope/non-goals, permissions, expected result, evidence/validation, stop/escalation/return, invocation and integration purpose, route/gate binding, and nested-delegation authority.
 
 - Prove runtime inheritance of `AGENTS.md` and triggered routes or explicitly bind them; discoverability alone fails.
+- Every evaluator packet must bind a non-optional canonical evaluator-calibration identity and path (default path `task-docs/_harness/evaluator-calibration.md`), instruct consultation before verdict, and require return fields `Consulted calibration path` and `Relevant calibration case IDs`. Missing binding is invalid and must `STOP` before launch. Case-ID `N/A` is allowed only after consultation and cannot replace the path or consultation.
 - Nested delegation is prohibited by default. If authorized, cap depth, agent count, executable budget, scope, authority, shared state, outputs, stops, and parent synthesis.
 - Every delegated write cites stable producer-nonmodifiable authority. A concise stable packet can govern eligible LOW-risk single-context work. Use a frozen/versioned boundary for MEDIUM/HIGH Semantic Risk, HIGH Operational Risk/high-impact external writes, cross-context/dependent/multiple write attempts, material protected/dirty/shared state, or credible drift from ambiguity/prior failure. A material boundary change stops the attempt and requires a new identity/version.
 
@@ -60,9 +78,9 @@ Safety recovery after a stop is limited to rollback, containment, isolation, evi
 
 Resume only after a substantive user decision or genuinely new independently verifiable external evidence materially changes the premise/diagnosis. Record the same domain, evidence, revised diagnosis/boundary, and exactly one producer/review cycle or one operational attempt. Failure restores the stop state.
 
-## Explicit Full-v2 Branch
+## Complete-v2 Execution Branch
 
-When the user explicitly requests the complete v2 loop, or stricter downstream policy requires it, use this exact order:
+When the required complete-v2 state applies, or the deliberate complete-v2 state has the complete six-field decision record, use this exact order:
 
 `planner` -> `plan evaluator` -> `solution designer` -> `solution evaluator` negotiation until strict PASS -> freeze the passing text as immutable `ACCEPTED_CONTRACT.md` -> `executor` -> `result evaluator` -> main-thread final review.
 

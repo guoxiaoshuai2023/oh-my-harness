@@ -12,8 +12,9 @@ Decision: PASS | FAIL
 - Assigned review type: code | factual | UX | security | semantic | external-state | combined bounded types
 - Reviewer independence from producer:
 - Relevant route docs and triggered gates:
+- Selected topology and complete-v2 state: adaptive default | required complete v2 | deliberate complete v2
 
-An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in explicit full v2; concise stable packets and other frozen/versioned forms are also valid when authorized.
+An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in required or deliberate complete v2; concise stable packets and other frozen/versioned forms are also valid when authorized.
 
 ## Authority, Scope, And State Verification
 
@@ -42,12 +43,29 @@ An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in explicit full 
 ## Adaptive Topology And Gate Verification
 
 - Selected topology preserved every triggered gate: PASS/FAIL
+- Adaptive-default state `MUST` have selected the smallest sufficient topology when neither required nor fully evidenced deliberate complete v2 applied: PASS/FAIL/N/A
+- Required-complete-v2 state `MUST` have preserved the exact complete ordered composition for explicit request or stricter downstream policy: PASS/FAIL/N/A
+- Deliberate-complete-v2 state `MAY` have selected that composition without those triggers only with the complete six-field record: PASS/FAIL/N/A
+- Harness presence, risk labels (including HIGH), role/artifact availability, habit, or inertia did not automatically select complete v2: PASS/FAIL
+- Reusable guidance neither defaults to complete v2 nor narrows its authority to only explicit request/policy: PASS/FAIL
 - Omitted roles/stages had an evidence-backed rationale and did not omit controls: PASS/FAIL/N/A
-- Explicit full-v2 request/stricter policy preserved: PASS/FAIL/N/A
 - Task packet route binding used proved inheritance or explicit routes/gates: PASS/FAIL/N/A
 - Dependencies, branch state, obsolete/cancellation conditions, and synthesis checked: PASS/FAIL/N/A
 - Review type matches the actual correctness/risk question: PASS/FAIL
 - No producer self-review was counted as independent: PASS/FAIL
+
+### Deliberate Complete-v2 Six-Field Verification
+
+Complete when deliberate complete v2 was selected; otherwise mark each row `N/A` and cite the selected-state evidence.
+
+- Concrete task facts support the complete composition: PASS/FAIL/N/A
+- At least one smaller viable topology and its specific control/evidence/handoff gap were compared: PASS/FAIL/N/A
+- All six roles supplied non-duplicative task-specific value: PASS/FAIL/N/A
+- Triggered gate owners, primary evidence, dependencies, handoffs, and decisions were complete: PASS/FAIL/N/A
+- Positive marginal value remained after coordination cost and context impact: PASS/FAIL/N/A
+- Main thread actively synthesized, revised topology when needed, intervened, enforced finite retries, arbitrated evidence, and retained final acceptance: PASS/FAIL/N/A
+
+Any missing or generic applicable field, automatic/default full-v2 selection, only-explicit/policy narrowing, or passive relay is strict `FAIL`.
 
 ## Retry And Failure Classification
 
@@ -63,8 +81,14 @@ An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in explicit full 
 
 ## Calibration
 
-- Consulted path: `task-docs/_harness/evaluator-calibration.md` | N/A
-- Relevant calibration case IDs: CAL-... | N/A
+- Invocation packet canonical evaluator-calibration identity:
+- Invocation packet canonical evaluator-calibration path: `task-docs/_harness/evaluator-calibration.md`
+- Invocation packet required pre-verdict consultation and both return fields: PASS/FAIL
+- Consulted calibration path: `task-docs/_harness/evaluator-calibration.md`
+- Calibration consultation completed before verdict: yes/no
+- Relevant calibration case IDs: CAL-... | `N/A` after consultation
+
+Missing packet identity/path, consultation, or either return field invalidates the evaluator invocation and requires `FAIL`/`STOP`; do not repair or infer the binding during QA. `N/A` is allowed only for relevant case IDs after consultation. It cannot replace the canonical path, consultation, primary-evidence inspection, or independent judgment.
 
 ## Independent Evidence Checklist
 
