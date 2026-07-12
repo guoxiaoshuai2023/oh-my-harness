@@ -1,6 +1,6 @@
 # Semantic Fidelity Protocol
 
-Read this doc for MEDIUM/HIGH semantic risk, cross-surface work, subjective quality, recommendation logic, semantic drift concerns, plan evaluation Pass A/Pass B, solution review, result QA, or any credible `AC-pass-but-user-fail` risk.
+Read this doc for MEDIUM/HIGH semantic risk, cross-surface work, subjective quality, recommendation logic, semantic drift concerns, plan evaluation Pass A/Pass B, solution review, result QA, or any credible `AC-pass-but-user-fail` risk. The adaptive orchestration protocol owns topology selection; this protocol owns the semantic gates that every selected topology must preserve.
 
 ## Semantic Fidelity Protocol
 
@@ -13,14 +13,16 @@ Read this doc for MEDIUM/HIGH semantic risk, cross-surface work, subjective qual
 - When a task modifies an existing user-visible surface or depends on current state, require current-state evidence. MEDIUM risk needs lightweight evidence; HIGH risk needs fuller evidence.
 - A credible `AC-pass-but-user-fail` counterexample must be represented in acceptance criteria, evidence requirements, stop conditions, or evaluator loops. Do not package that check as a review-only task.
 - Duplicate coverage is valid only when force, trigger, stop condition, forbidden action, required action, and safety boundary are equivalent. Topic similarity alone is not enough.
-- Semantic fidelity augments the six existing logical responsibilities. Do not add a fixed seventh agent, and do not convert semantic review, Pass A/B, contract review, result QA, compliance, or final acceptance into a delivery task.
+- HIGH Semantic Risk requires producer-independent semantic judgment against the controlling anchor and outcome boundary before main-thread final acceptance. Producer self-review and main-thread acceptance do not replace that evidence.
+- Semantic fidelity augments the available logical responsibilities. Do not add a fixed seventh agent, and do not convert semantic review, Pass A/B, contract review, result QA, compliance, or final acceptance into a delivery task.
 
-## V2 Harness Gates
+## Adaptive Topology And Full-v2 Compatibility
 
-- The v2 sequence is planner -> plan evaluator -> solution designer -> solution evaluator negotiation until strict PASS -> freeze `ACCEPTED_CONTRACT.md` -> executor -> result evaluator -> main-thread independent review.
-- The executor handles only the frozen `ACCEPTED_CONTRACT.md` for one approved task. It must not execute later tasks or repair out-of-contract issues.
-- Result evaluator independently verifies implementation report, repo state, external-system evidence when applicable, and every acceptance criterion.
-- Main thread performs independent review after result QA before moving to the next task.
+- Use `task-docs/_harness/adaptive-orchestration-protocol.md` to select and revise the execution topology. Omitting a named role does not omit an Original Request Anchor, Pass A/B, Outcome Contract, semantic comparison, current-state evidence, or `AC-pass-but-user-fail` control when its trigger applies.
+- HIGH semantic risk requires complete triggered semantic-control coverage, not automatic invocation of all six roles. A lighter topology must identify an owner, evidence, and decision for every triggered semantic gate.
+- The complete v2 flow remains available and must run when explicitly requested: planner -> plan evaluator -> solution designer -> solution evaluator negotiation until strict PASS -> freeze `ACCEPTED_CONTRACT.md` -> executor -> result evaluator -> main-thread final review.
+- In the full v2 flow, the executor handles only the frozen `ACCEPTED_CONTRACT.md` for one approved task. It must not execute later tasks or repair out-of-contract issues.
+- In the full v2 flow, the result evaluator independently verifies the implementation report, repo state, external-system evidence when applicable, and every acceptance criterion. The main thread then inspects the primary evidence and performs final review before moving to the next task.
 - Harness review is a gate, not a task. Planner must not turn plan review, solution contract review, result QA, compliance checks, or final acceptance into delivery tasks.
 - Evaluators must not output `PASS with caveats`; any P0/P1 finding, missing acceptance-criteria evidence, or unverified acceptance criterion is a FAIL.
 

@@ -56,6 +56,16 @@ Passing decisions must remain strict:
 | CAL-SEM-002 | Pass A contaminated by planner-authored content |
 | CAL-SEM-003 | multi-task split loses whole outcome |
 | CAL-SEM-004 | smoke test overclaimed as semantic or rule-preservation proof |
+| CAL-ADAPT-001 | mechanical full loop selected because harness artifacts exist |
+| CAL-ADAPT-002 | light topology skips a triggered gate |
+| CAL-ADAPT-003 | incomplete packet or discoverability-only route binding |
+| CAL-ADAPT-004 | unmanaged parallel work or vote-based arbitration |
+| CAL-ADAPT-005 | profile simplification weakens durable role boundaries |
+| CAL-ADAPT-006 | relabeling resets a retry-domain count |
+| CAL-ADAPT-007 | unsupported FAIL consumes producer quality count |
+| CAL-ADAPT-008 | artifact-free operational failure is omitted or fabricated |
+| CAL-ADAPT-009 | structural checks are treated as semantic proof |
+| CAL-ADAPT-010 | complete-v2 selection authority narrowing |
 
 ## Calibration Cases
 
@@ -518,3 +528,482 @@ Likely fault origin:
 
 AC-pass-but-user-fail angle:
 - AC says "fixture validator passed"; user fails because a rule was weakened even though its trigger string appeared in the fixture.
+
+## Adaptive Orchestration Calibration Cases
+
+The adaptive cases use the stable schema above and additionally make the bad pattern, controlling rule, required evaluator/main-thread response, and reusable positive/negative fixture explicit. Scenario references point to `task-docs/_harness/adaptive-orchestration-acceptance-matrix.md`; they select evidence but do not replace independent inspection.
+
+### Case CAL-ADAPT-001 - mechanical full loop selected because harness artifacts exist
+
+Case id:
+- CAL-ADAPT-001
+
+Category:
+- mechanical full-loop selection
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A LOW mechanical task launches all six roles or creates a run directory, packet, contract, report, and QA merely because the request names the harness, profiles, or `task-docs/`.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Adaptive governance selects the smallest sufficient topology from task facts and triggered gates. Role or artifact existence is not a trigger and adds ceremony without evidence value.
+
+Controlling rule:
+- Adaptive protocol `Topology Decision And Revision`, `Delegation Value And Bounded Fan-Out`, and `Composable, Non-Exhaustive Modes`; run-directory protocol `Proportional Artifact Decision`.
+
+Missing evidence / evidence needed:
+- No fact-based topology record, delegation-value comparison, artifact trigger, or proof that direct exact validation is insufficient.
+
+Required evaluator/main-thread response:
+- Evaluator returns strict FAIL for the unjustified topology. Main thread removes untriggered roles/artifacts, retains applicable routes/gates, and records direct evidence; it does not treat lighter process as weaker evidence.
+
+New evaluator rule:
+- Fail mechanical full-loop selection that is justified only by harness/profile/task-doc existence.
+
+Reusable positive/negative case:
+- Positive: AS-01 and CC-LOW use exact one-file evidence with no role/artifact. Negative: the same Maple edit launches a full v2 sequence solely because “harness” appears.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/orchestration-prompt-template.md`
+- `task-docs/_harness/templates/plan-review-template.md`
+- `task-docs/_harness/templates/result-qa-template.md`
+
+### Case CAL-ADAPT-002 - light topology skips a triggered gate
+
+Case id:
+- CAL-ADAPT-002
+
+Category:
+- optional stage confused with optional gate
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A “small” or “adaptive” topology omits a triggered safety, semantic, current-state, stable-boundary, or producer-independence control together with the role commonly associated with it.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Roles and stages are selectable; triggered gates are mandatory and require an owner, primary evidence, and decision regardless of topology size.
+
+Controlling rule:
+- Adaptive protocol `Optional Stages, Mandatory Gates, And Route Binding` and `Producer-Independent Verification And Final Acceptance`; semantic protocol `Adaptive Topology And Full-v2 Compatibility`.
+
+Missing evidence / evidence needed:
+- Gate-owner/evidence/decision map and applicable confirmation, Anchor/Outcome, fresh-state, frozen-boundary, readback, or independent-review evidence.
+
+Required evaluator/main-thread response:
+- Return strict FAIL, identify the exact omitted gate and failure origin, and stop the protected transition. Main thread adds the missing control or selects a topology that can satisfy it; it must not add unrelated stages.
+
+New evaluator rule:
+- Evaluate control coverage, not role count. Any triggered gate without owner, evidence, and decision is blocking.
+
+Reusable positive/negative case:
+- Positive: AS-04 and CC-HIGH omit planner/designer profiles but preserve frozen semantic authority and separate review. Negative: AS-05 calls deletion “small” and proceeds without confirmation/readback independence.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/task-packet-template.md`
+- `task-docs/_harness/templates/plan-review-template.md`
+- `task-docs/_harness/templates/result-qa-template.md`
+
+### Case CAL-ADAPT-003 - incomplete packet or discoverability-only route binding
+
+Case id:
+- CAL-ADAPT-003
+
+Category:
+- invalid delegation authority
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A delegation omits a required packet field or says only that rules exist in the repository without proving runtime inheritance or explicitly binding triggered routes/gates.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Concision cannot omit required meaning, and route discoverability is not evidence that a delegated context applied the rules.
+
+Controlling rule:
+- Adaptive protocol `Task Packets And Stable Write Boundaries`; task packet `Required Invocation Boundary`, `Router And Gate Binding`, and `Packet Validity Check`.
+
+Missing evidence / evidence needed:
+- Every required packet field; proved inheritance trace or explicit route/gate list; each gate's owner, evidence, and decision.
+
+Required evaluator/main-thread response:
+- Mark the packet invalid and STOP before launch. Main thread completes the missing authority and route binding under a stable identity rather than asking the producer to infer it.
+
+New evaluator rule:
+- Never launch or pass an incomplete packet or a discoverability-only binding.
+
+Reusable positive/negative case:
+- Positive: AS-26 invocation A proves inheritance and B explicitly binds. Negative: AS-22 packet A omits `Explicit non-goals`, or AS-26 C says only `rules exist in repo`.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/task-packet-template.md`
+- `docs/adapters/codex-subagents.md`
+
+### Case CAL-ADAPT-004 - unmanaged parallel work or vote-based arbitration
+
+Case id:
+- CAL-ADAPT-004
+
+Category:
+- unsafe coordination and invalid synthesis
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- Parallel branches share writes or mutable state without ownership; lack prerequisites, obsolete/cancellation conditions, downstream consumer, or synthesis; or competing outputs are resolved by votes, confidence, or agent count.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Parallelism needs disjoint or conflict-safe ownership and dependency control. Evidence conflicts are resolved by authority, freshness, assumptions, reproducibility, relevance, and decisive evidence, not popularity.
+
+Controlling rule:
+- Adaptive protocol `Parallel Ownership, Dependencies, Cancellation, And Synthesis`.
+
+Missing evidence / evidence needed:
+- Per-branch owner, prerequisites, distinct output, shared-state restrictions, consumer, obsolete condition, synthesis step, and evidence-arbitration table.
+
+Required evaluator/main-thread response:
+- STOP unsafe branches or mark invalid work superseded; prevent output propagation; inspect decisive evidence and synthesize explicitly. Do not average or vote.
+
+New evaluator rule:
+- Fail unmanaged shared writes, incomplete branch state, unsynthesized outputs, and vote-based arbitration.
+
+Reusable positive/negative case:
+- Positive: AS-08 uses two disjoint packets and waits for both; AS-09 selects by source fit. Negative: both branches edit one file or proposal B wins two votes to one.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/context-handoff-template.md`
+- `task-docs/_harness/templates/orchestration-prompt-template.md`
+
+### Case CAL-ADAPT-005 - profile simplification weakens durable role boundaries
+
+Case id:
+- CAL-ADAPT-005
+
+Category:
+- reusable profile regression
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A shorter or more generic profile weakens sandbox, permission, producer independence, evidence discipline, stop behavior, mission, or role intelligence, or embeds project paths/ACs.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Profiles own durable role boundaries across projects and complexity levels. Current task facts belong in packets; simplification cannot lower modal force or transfer authority.
+
+Controlling rule:
+- Codex adapter `Profile And Packet Ownership` and `Capability Interfaces`; accepted six profile boundaries.
+
+Missing evidence / evidence needed:
+- Before/after six-role ledger comparing permissions, sandbox, independence, evidence, stops, mission, and packet/profile ownership.
+
+Required evaluator/main-thread response:
+- Fail the regression and route it to the owning profile task. Downstream task execution stops; documentation or calibration must not conceal or repair a protected upstream defect.
+
+New evaluator rule:
+- Require every current profile boundary to be equivalent or stronger than its accepted source on all durable control dimensions.
+
+Reusable positive/negative case:
+- Positive: AS-15/16/19 show generic profiles with packet-driven depth and unchanged authority. Negative: result evaluator loses read-only sandbox or may repair failures.
+
+Relevant prompt/template targets:
+- `.codex/agents/harness-*.toml`
+- `docs/adapters/codex-subagents.md`
+
+### Case CAL-ADAPT-006 - relabeling resets a retry-domain count
+
+Case id:
+- CAL-ADAPT-006
+
+Category:
+- retry budget evasion
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A stage, task, boundary, prompt, tool, agent, strategy, or topology is renamed and the same failed user-valued result/root cause is given a fresh cumulative or operational budget.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Retry-domain cumulative quality and normalized-cause operational counts survive cosmetic relabeling; only evidence of a genuinely different domain or qualifying resume can change the budget.
+
+Controlling rule:
+- Adaptive protocol `Quality And Operational Retry Budgets` and `Retry Domains, Exhaustion, Safety Recovery, And Resume`; context handoff counter fields.
+
+Missing evidence / evidence needed:
+- Stable retry-domain identity, failed result, root cause, boundary and dependency comparison, cumulative/operational ledger, and qualifying-event evidence if resumed.
+
+Required evaluator/main-thread response:
+- Restore the inherited count, intervene at two, and block/exhaust at the post-intervention third failure. Reject relabeling as a new domain.
+
+New evaluator rule:
+- Treat cosmetic stage/task/boundary/tool/agent changes as the same domain unless decisive evidence proves otherwise.
+
+Reusable positive/negative case:
+- Positive: AS-12 and AS-31 preserve counts across stage/tool changes. Negative: execution is renamed “verification” and starts again at zero.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/context-handoff-template.md`
+- `task-docs/_harness/templates/result-qa-template.md`
+
+### Case CAL-ADAPT-007 - unsupported FAIL consumes producer quality count
+
+Case id:
+- CAL-ADAPT-007
+
+Category:
+- invalid failure counting and wrong review type
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- Any raw evaluator FAIL increments the producer count even when the finding is unsupported, outside the assigned review type, based on stale/missing evidence, or caused by evaluator misunderstanding.
+
+Evaluator incorrectly decided:
+- FAIL against the producer, with count increment
+
+Expected decision:
+- Reject the unsupported finding; producer count unchanged
+
+Why it fails:
+- A quality failure is valid only when evidence-supported, in scope for the assigned review type, and tied to active authority. Wrong-review failures belong to evaluator/prompt/routing diagnosis.
+
+Controlling rule:
+- Adaptive protocol `Failure Classification And Validity`; run-directory protocol `Failure, Retry, Intervention, And Stop State`.
+
+Missing evidence / evidence needed:
+- Exact review assignment, decisive primary evidence, finding-to-authority comparison, and counter ledger.
+
+Required evaluator/main-thread response:
+- Reject with evidence, classify evaluator misunderstanding/unsupported finding/wrong review type, correct the reviewer/packet, and leave producer stage-local and cumulative counts unchanged.
+
+New evaluator rule:
+- A FAIL string is not a valid producer failure without scope, authority, and decisive evidence.
+
+Reusable positive/negative case:
+- Positive: AS-27 rejects a UX reviewer's unit-test objection and keeps count 2. Negative: that objection becomes producer failure 3 and exhausts the domain.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/result-qa-template.md`
+- `.codex/agents/harness-result-evaluator.toml`
+
+### Case CAL-ADAPT-008 - artifact-free operational failure is omitted or fabricated
+
+Case id:
+- CAL-ADAPT-008
+
+Category:
+- operational failure misrepresented as quality output
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- A timeout/startup/tool/service failure before reviewable output is ignored, or a producer artifact, reviewer verdict, or quality FAIL is fabricated to fit the lifecycle.
+
+Evaluator incorrectly decided:
+- PASS, or quality FAIL against a nonexistent artifact
+
+Expected decision:
+- Record operational attempt only; no quality decision
+
+Why it fails:
+- Pre-artifact failures consume a separate normalized-cause operational budget and cannot truthfully create producer/reviewer evidence.
+
+Controlling rule:
+- Adaptive protocol `Failure Classification And Validity` and `Quality And Operational Retry Budgets`; context handoff artifact-free counter.
+
+Missing evidence / evidence needed:
+- Complete runtime log, normalized evidence-supported cause, transience/invocation-defect check, operational counter, and proof quality count remains unchanged.
+
+Required evaluator/main-thread response:
+- Record operational count, permit only the bounded checked retry, intervene before a third same-cause attempt, and never fabricate artifacts or reviews.
+
+New evaluator rule:
+- Separate artifact-free operational attempts from quality cycles in evidence, counters, and reports.
+
+Reusable positive/negative case:
+- Positive: AS-30 records two `ETIMEDOUT` attempts, operational 2 and quality 0. Negative: a fake producer report and FAIL are created for each timeout.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/context-handoff-template.md`
+- `task-docs/_harness/templates/executor-report-template.md`
+
+### Case CAL-ADAPT-009 - structural checks are treated as semantic proof
+
+Case id:
+- CAL-ADAPT-009
+
+Category:
+- structural evidence overclaim
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- All IDs, fields, paths, or trigger strings parse and a smoke validator passes, so the evaluator declares topology, authority, outcome, independence, or rule semantics correct without inspecting the row decisions and primary evidence.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL when semantic/independence evidence is absent
+
+Why it fails:
+- Structural checks prove only shape or mention coverage. They cannot prove gate preservation, semantic outcome, producer independence, force equivalence, or user success.
+
+Controlling rule:
+- Result evaluator profile structural-check limit; CAL-SEM-004; router validator's explicit non-semantic boundary; adaptive protocol evidence rule.
+
+Missing evidence / evidence needed:
+- Independent per-scenario judgment, discriminating failure signal, controlling authority, primary outcome/state evidence, and separate semantic/independence review where triggered.
+
+Required evaluator/main-thread response:
+- Label structural results narrowly, perform the missing semantic review, and return strict FAIL if a triggered semantic or independence gate remains unverified.
+
+New evaluator rule:
+- Never upgrade IDs, parsing, path existence, or smoke coverage into semantic PASS.
+
+Reusable positive/negative case:
+- Positive: every AS row has an independent evidence decision and CC-NEGATIVE fails despite structural PASS. Negative: all 31 IDs parse and Harbor self-review is accepted as independent.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/result-qa-template.md`
+- `task-docs/_harness/templates/routing-scenario-matrix-template.md`
+- `scripts/validate_router_fixture.py`
+
+### Case CAL-ADAPT-010 - complete v2 incorrectly limited to explicit request or stricter policy
+
+Case id:
+- CAL-ADAPT-010
+
+Category:
+- complete-v2 selection authority narrowing
+
+Case type:
+- synthetic
+
+Applies to:
+- `plan_evaluator`
+- `solution_evaluator`
+- `result_evaluator`
+
+Task pattern / bad pattern:
+- Reusable routing, public, adoption, example, contract, or evaluator guidance says the complete governed v2 flow is available `only` when explicitly requested or required by stricter downstream policy, omitting evidence-backed deliberate main-thread selection.
+
+Evaluator incorrectly decided:
+- PASS
+
+Expected decision:
+- FAIL
+
+Why it fails:
+- Requirements and the adaptive protocol preserve three distinct states: adaptive default, required complete v2 for explicit request or stricter policy, and deliberate main-thread selection when task-specific evidence shows the complete sequence is the clearest control coverage. The bad pattern removes the third state even though structural checks and explicit-request fixtures can still pass.
+
+Controlling rule:
+- Requirements `Supported Orchestration Modes`, especially `Full governed flow`; adaptive protocol `Composable, Non-Exhaustive Modes`, `Optional Stages, Mandatory Gates, And Route Binding`, and `Authority And Accountability`.
+
+Missing evidence / evidence needed:
+- Three-state wording with correct modal force; a deliberate-selection record containing concrete task facts, smaller-topology comparison, six-role non-duplicative value map, gate owners/evidence/handoffs, cost/context value, and active main-thread controls; plus the complete `CC-DELIBERATE-FULL-V2` decision and failure-signal checks.
+
+Required evaluator/main-thread response:
+- Return strict FAIL, classify a semantic contract/authority failure, reject implementation-only repair under the defective boundary, route to the owning contract, and require revised authority plus fresh producer-independent Result QA.
+
+New evaluator rule:
+- Fail any reusable or controlling guidance that makes explicit request or stricter policy the exclusive complete-v2 selection path. Also fail risk-label automatic full v2, default full-loop behavior, duplicate-role ceremony, or passive main-thread relay. Accept deliberate selection only when the complete six-field task-specific evidence record is present.
+
+Reusable positive/negative case:
+- Positive: `CC-DELIBERATE-FULL-V2` Project Lattice has no explicit request or fixed policy, compares a smaller topology, proves distinct value for all six interfaces, binds gates/evidence/handoffs, and retains adaptive intervention and main-thread acceptance. Negative: the same case is prohibited for lacking explicit request/policy, selected automatically from HIGH risk, treated as the harness default, or run with a passive relay.
+
+Relevant prompt/template targets:
+- `task-docs/_harness/templates/routing-scenario-matrix-template.md`
+- `task-docs/_harness/templates/orchestration-prompt-template.md`
+- `task-docs/_harness/templates/plan-review-template.md`
+- `task-docs/_harness/templates/result-qa-template.md`

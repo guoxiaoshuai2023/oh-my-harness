@@ -18,6 +18,13 @@ Read this doc for code changes, documentation changes, template changes, generat
 - Prefer standard library or existing repo tooling for harness scripts.
 - If a dependency is added, document why, where it is used, and how it was validated.
 
+## Delegated Write Boundaries
+
+- Every delegated write attempt must cite a stable authoritative boundary that identifies the objective, allowed writes, protected state, required evidence, and stop conditions.
+- The producer must not edit or reinterpret its controlling boundary. A material boundary change stops the attempt and requires a new identity or version.
+- A concise stable packet may govern LOW-risk single-context work. Use a frozen or versioned boundary for MEDIUM/HIGH semantic risk affecting the result, HIGH operational risk or high-impact external writes, cross-context or dependent writes, protected paths or shared mutable state, or credible boundary drift.
+- Preserve unrelated work with before/after hashes or a changed-path baseline when a final diff cannot distinguish pre-existing or untracked state.
+
 ## Templates And Protocols
 
 Harness templates and protocols are behavior-shaping artifacts. Changes to them can affect future agents, so:

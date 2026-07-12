@@ -4,7 +4,7 @@
 
 Most agent workflows start simple: one `AGENTS.md`, a few rules, and a lot of trust. Then the repo grows. Rules get long, safety constraints get buried, task plans drift, and "the tests passed" stops being enough evidence that the agent did the right thing.
 
-`oh-my-harness` gives you a reusable architecture for that next stage: a small repo-level router, trigger-based detailed docs, semantic fidelity gates, execution contracts, result QA, and traceability artifacts that make agent work auditable.
+`oh-my-harness` gives you a reusable architecture for that next stage: a small repo-level router, adaptive main-thread governance, trigger-based detailed docs, semantic fidelity gates, stable execution boundaries, targeted independent review, and traceability artifacts that make agent work auditable.
 
 ## Why This Exists
 
@@ -22,7 +22,8 @@ AI agents are good at doing work. They are less reliable when the work depends o
 
 - **A compact `AGENTS.md` router** that keeps always-on hard gates and route triggers visible every session.
 - **Trigger-based routed docs** so agents read only the rules relevant to the current task.
-- **A v2 task loop**: planner -> plan evaluator -> solution designer -> solution evaluator -> frozen contract -> executor -> result evaluator -> main-thread review.
+- **Adaptive governance by default**: the main thread selects the smallest sufficient mix of direct work, reusable capabilities, durable artifacts, and targeted review while preserving every fact-triggered gate.
+- **Complete-v2 compatibility without a default pipeline**: planner -> plan evaluator -> solution designer -> solution evaluator -> frozen contract -> executor -> result evaluator -> main-thread review is required when explicitly requested or imposed by stricter downstream policy, and remains available as an evidence-backed deliberate main-thread choice.
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
 - **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
@@ -39,6 +40,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `docs/architecture.md` | High-level explanation of the harness model. |
 | `docs/adapters/codex-subagents.md` | How the Codex subagent TOML files map to the generic harness. |
 | `docs/agent-routing/` | Detailed route docs for secrets, external systems, high-risk actions, current-state evidence, implementation boundaries, validation, and planning scale. |
+| `task-docs/_harness/adaptive-orchestration-protocol.md` | Normative topology, delegation, packet, boundary, dependency, retry, intervention, synthesis, and independent-verification rules. |
 | `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic risk protocol and v2 loop rules. |
 | `task-docs/_harness/run-directory-protocol.md` | Run directory, accepted contract, evidence, and result QA conventions. |
 | `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
@@ -97,14 +99,16 @@ This helper checks trigger text, route paths, and optional ledger Rule ID mentio
 `oh-my-harness` separates three things that often get mixed together:
 
 1. **Routing**: `AGENTS.md` tells the agent which detailed doc to read for the current trigger.
-2. **Execution control**: task work moves through planning, contract review, execution, result QA, and final review.
+2. **Execution control**: the main thread chooses and revises an evidence-backed topology; named roles and stages are optional, but triggered safety, semantic, current-state, stable-boundary, validation, and independence gates are mandatory.
 3. **Semantic preservation**: high-risk or ambiguous work is checked against the original user intent, not just local acceptance criteria.
 
-This keeps low-risk work lightweight while giving high-risk work enough structure to prevent drift.
+This keeps low-risk work lightweight while giving high-risk work enough structure to prevent drift. Every delegation receives a complete task packet and stable producer-nonmodifiable authority. Nested delegation is prohibited by default, and stage-local, retry-domain cumulative, and artifact-free operational budgets remain finite across renamed roles, tools, or stages.
+
+The complete v2 sequence is a compatibility composition, not the default meaning of “use the harness.” It MUST run when explicitly requested or required by stricter downstream policy. Without either requirement trigger, the main thread MAY deliberately select it only when a task-specific record identifies concrete facts that make separate planning, plan review, boundary design, boundary review, execution, and result review materially useful; compares a smaller viable topology and its control/evidence/handoff gap; maps non-duplicative value for all six interfaces; binds gate owners, primary evidence, dependencies, handoffs, and decisions; shows positive marginal value despite cost and context; and keeps synthesis, topology revision, intervention, finite retries, evidence arbitration, and final acceptance active. HIGH risk, the harness name, role availability, or process inertia never selects the full sequence by itself, and role PASS labels never replace main-thread judgment.
 
 ## Codex Subagent Adapter
 
-The repo includes `.codex/agents/*.toml` for the six active v2 roles:
+The repo includes `.codex/agents/*.toml` for six reusable capability interfaces:
 
 - `oh_my_harness_planner`
 - `oh_my_harness_plan_evaluator`
@@ -113,7 +117,7 @@ The repo includes `.codex/agents/*.toml` for the six active v2 roles:
 - `oh_my_harness_executor`
 - `oh_my_harness_result_evaluator`
 
-These files are an adapter for Codex, not a separate architecture. Other agent runtimes can implement the same responsibilities with their own config format. See `docs/adapters/codex-subagents.md`.
+These files are an adapter for Codex, not a scheduler, mandatory pipeline, or separate architecture. The main thread owns topology, packets, synthesis, intervention, and final acceptance; project facts and validation depth belong in each packet. Other agent runtimes can implement the same responsibilities with their own config format. See `docs/adapters/codex-subagents.md`.
 
 Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex config with `multi_agent.max_depth = 1`. Copy it to `.codex/config.toml` only if your Codex version supports those repo-local config keys.
 

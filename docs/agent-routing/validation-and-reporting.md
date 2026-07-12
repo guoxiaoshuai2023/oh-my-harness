@@ -11,6 +11,7 @@ Read this doc for validation, implementation reports, evidence standards, test s
 - Bug fixes should reproduce the bug before fixing when practical. If not practical, explain why and validate the closest affected path.
 - Do not claim a bug is fixed unless the relevant behavior was directly checked.
 - Passing tests are evidence, not proof of all real-world behavior.
+- HIGH Operational Risk, HIGH Semantic Risk, and high-impact external writes or results require producer-independent verification of the applicable primary evidence before main-thread final acceptance. Producer self-review is insufficient; HIGH Semantic Risk also requires independent semantic judgment.
 
 ## Reporting Minimums
 
@@ -18,10 +19,17 @@ Final reports should state:
 
 - What changed.
 - What did not change, when relevant to scope.
+- The selected topology and why when material.
+- What was delegated and how returned work was integrated.
+- What primary evidence the main thread inspected.
+- Which normally available major stages were intentionally omitted and why for MEDIUM/HIGH-risk work.
 - What was validated.
 - What was not validated.
+- Blockers, when present.
 - Remaining risks or uncertainty.
 - Any follow-up needed before release or publication.
+
+Reports must not imply that a role, review, validation, external action, readback, or completion occurred when it did not.
 
 ## Evidence Quality
 

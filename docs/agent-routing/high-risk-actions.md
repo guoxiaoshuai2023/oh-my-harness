@@ -12,8 +12,12 @@ Stop before any high-impact action unless all are true:
 - A plan, preview, dry-run, or equivalent has been produced when available.
 - The user explicitly confirms the exact action and target.
 - Recovery, rollback, or backup has been considered when relevant.
+- The action uses a frozen or versioned execution boundary that the producer cannot change during the attempt.
+- Applicable post-action evidence and producer-independent verification are defined.
 
 Generic approval is not enough for high-impact actions.
+
+Producer-independent verification must inspect the applicable outcome, safety, and external-state evidence before main-thread final acceptance. The producer's self-review cannot satisfy this gate, and final acceptance does not replace it.
 
 ## Common High-Risk Categories
 
@@ -37,6 +41,7 @@ Reports must include:
 - Whether a dry-run/preview was performed.
 - Confirmation status.
 - Validation performed.
+- Producer-independent verification and applicable post-action evidence.
 - What was not validated.
 - Remaining risk.
 
