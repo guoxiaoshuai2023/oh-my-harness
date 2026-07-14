@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "prepack": "node src/installer/package-bundle.mjs prepare --pack-root \"$OH_MY_HARNESS_PACK_ROOT\"",
+    "postpack": "node src/installer/package-bundle.mjs cleanup",
     "test": "node --test test/bundle/*.test.mjs test/lifecycle/*.test.mjs",
     "validate:package": "node test/lifecycle/package-validation.mjs"
   }

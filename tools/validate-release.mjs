@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertRuntimeReferenceClosure } from '../src/bundle/compiler.mjs';
-import { loadReleaseBundle, preparePackage } from '../src/installer/package-bundle.mjs';
+import { validateReleaseContents } from '../src/installer/package-bundle.mjs';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const VERSION = '0.1.0';
@@ -71,7 +71,6 @@ function isolatedEnvironment(root, executables) {
     npm_config_logs_dir: path.join(root, 'logs'),
     npm_config_tmp: path.join(root, 'tmp'),
     npm_config_offline: 'true',
-    npm_config_ignore_scripts: 'true',
     npm_config_audit: 'false',
     npm_config_fund: 'false',
     npm_config_update_notifier: 'false',
@@ -105,32 +104,34 @@ async function repositoryResidue() {
   return [...new Set(present)].sort();
 }
 
+async function stageFile(stageRoot, relativePath) {
+  const destination = path.join(stageRoot, ...relativePath.split('/'));
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(path.join(ROOT, ...relativePath.split('/')), destination, { errorOnExist: true, force: false });
+}
+
 async function stagePackage(stageRoot) {
   await mkdir(stageRoot);
   await cp(path.join(ROOT, 'bin'), path.join(stageRoot, 'bin'), { recursive: true, errorOnExist: true, force: false });
   await mkdir(path.join(stageRoot, 'src'));
   await cp(path.join(ROOT, 'src/installer'), path.join(stageRoot, 'src/installer'), { recursive: true, errorOnExist: true, force: false });
-  await cp(path.join(ROOT, 'README.md'), path.join(stageRoot, 'README.md'), { errorOnExist: true, force: false });
-  await cp(path.join(ROOT, 'package.json'), path.join(stageRoot, 'package.json'), { errorOnExist: true, force: false });
-  await preparePackage({ packRoot: stageRoot, sourceRoot: ROOT, version: VERSION });
-  return loadReleaseBundle({ packageRoot: stageRoot, packageVersion: VERSION });
+  await cp(path.join(ROOT, 'src/bundle'), path.join(stageRoot, 'src/bundle'), { recursive: true, errorOnExist: true, force: false });
+  const bundleMap = JSON.parse(await readFile(path.join(ROOT, 'packaging/bundle-map.json'), 'utf8'));
+  const sourceFiles = new Set([
+    'AGENTS.md', 'README.md', 'package.json',
+    'packaging/bundle-map.json', 'packaging/managed-router-block.md',
+    'packaging/package-contract.json', 'packaging/schemas/bundle-inventory.schema.json',
+    'packaging/schemas/package-contract.schema.json',
+    ...bundleMap.entries.map((entry) => entry.source),
+  ]);
+  for (const relativePath of [...sourceFiles].sort()) await stageFile(stageRoot, relativePath);
+  return { sourceFiles: [...sourceFiles].sort() };
 }
 
-async function treeHashes(root) {
-  const rows = [];
-  const walk = async (directory, prefix = '') => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => Buffer.from(left.name).compare(Buffer.from(right.name)));
-    for (const entry of entries) {
-      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const absolute = path.join(directory, entry.name);
-      if (entry.isDirectory()) await walk(absolute, relativePath);
-      else if (entry.isFile()) rows.push([relativePath, sha256(await readFile(absolute))]);
-      else throw new Error(`unexpected staged file type: ${relativePath}`);
-    }
-  };
-  await walk(root);
-  return rows;
+function releaseTreeHashes(release) {
+  return [...release.files.entries()]
+    .map(([relativePath, bytes]) => [relativePath, sha256(bytes)])
+    .sort(([left], [right]) => Buffer.from(left).compare(Buffer.from(right)));
 }
 
 function tarEntries(archiveBytes) {
@@ -173,6 +174,33 @@ function assertExactSet(actual, expected, label) {
   const extra = [...actualSet].filter((item) => !expectedSet.has(item));
   const missing = [...expectedSet].filter((item) => !actualSet.has(item));
   if (extra.length || missing.length) throw new Error(`${label} mismatch; extra=${extra.join(',')} missing=${missing.join(',')}`);
+}
+
+async function releaseFromArchive(archive) {
+  return validateReleaseContents({
+    inventoryBytes: archive.get('package/dist/.oh-my-harness/bundle-inventory.json'),
+    readPayload: async (relativePath) => archive.get(`package/dist/${relativePath}`) ?? null,
+    packageVersion: VERSION,
+  });
+}
+
+async function assertPackCleanup(stageRoot) {
+  try {
+    await lstat(path.join(stageRoot, 'dist'));
+    throw new Error('standard package lifecycle retained generated dist output');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const archives = (await readdir(stageRoot)).filter((name) => name.endsWith('.tgz'));
+  assert.deepEqual(archives, []);
+}
+
+function comparablePackMetadata(metadata) {
+  return {
+    id: metadata.id, name: metadata.name, version: metadata.version,
+    filename: metadata.filename, size: metadata.size, unpackedSize: metadata.unpackedSize,
+    shasum: metadata.shasum, integrity: metadata.integrity, files: metadata.files,
+  };
 }
 
 export function findUnscopedInstallCommands(text) {
@@ -365,7 +393,7 @@ async function parsePackedToml({ archive, root, environment, python }) {
 }
 
 async function packStage({ stageRoot, archiveRoot, environment, npm, dryRun = false }) {
-  const args = ['pack', '--ignore-scripts', '--offline', '--json'];
+  const args = ['pack', '--offline', '--json'];
   if (dryRun) args.push('--dry-run');
   else args.push('--pack-destination', archiveRoot);
   const output = run(npm, args, { cwd: stageRoot, environment, label: dryRun ? 'npm pack --dry-run --json' : 'npm pack archive' });
@@ -391,44 +419,64 @@ export async function validateRelease() {
       npm: resolveExecutable('npm'), python: resolveExecutable('python3.11'),
     };
     const environment = isolatedEnvironment(rootReal, executables);
+    assert.equal(Object.hasOwn(environment, 'npm_config_ignore_scripts'), false);
+    assert.equal(Object.hasOwn(environment, 'OH_MY_HARNESS_PACK_ROOT'), false);
     const npmVersion = run(executables.npm, ['--version'], { cwd: rootReal, environment, label: 'npm version' }).trim();
     const stageA = path.join(rootReal, 'package-a');
     const stageB = path.join(rootReal, 'package-b');
-    const releaseA = await stagePackage(stageA);
-    const releaseB = await stagePackage(stageB);
-    const treeA = await treeHashes(path.join(stageA, 'dist'));
-    const treeB = await treeHashes(path.join(stageB, 'dist'));
-    assert.deepEqual(treeA, treeB);
-    assert.equal(treeA.length, 44);
-    assert.deepEqual(releaseA.inventoryBytes, releaseB.inventoryBytes);
-    const payloadIdentity = sha256(Buffer.from(`${JSON.stringify(treeA)}\n`));
-    const inventoryIdentity = sha256(releaseA.inventoryBytes);
+    const stagedA = await stagePackage(stageA);
+    const stagedB = await stagePackage(stageB);
+    assert.deepEqual(stagedA.sourceFiles, stagedB.sourceFiles);
+    await assertPackCleanup(stageA);
+    await assertPackCleanup(stageB);
 
-    const expectedPaths = await expectedPackagePaths(stageA, releaseA);
     const dryRun = await packStage({ stageRoot: stageA, archiveRoot: null, environment, npm: executables.npm, dryRun: true });
-    assertExactSet(dryRun.files.map(({ path: filePath }) => filePath), expectedPaths, 'npm dry-run file inventory');
+    await assertPackCleanup(stageA);
+    assert.deepEqual(await readdir(path.join(rootReal, 'archive-a')), []);
+    assert.deepEqual(await readdir(path.join(rootReal, 'archive-b')), []);
 
     const packedA = await packStage({ stageRoot: stageA, archiveRoot: path.join(rootReal, 'archive-a'), environment, npm: executables.npm });
+    await assertPackCleanup(stageA);
     const packedB = await packStage({ stageRoot: stageB, archiveRoot: path.join(rootReal, 'archive-b'), environment, npm: executables.npm });
+    await assertPackCleanup(stageB);
+    assert.deepEqual(comparablePackMetadata(dryRun), comparablePackMetadata(packedA));
+    assert.deepEqual(comparablePackMetadata(packedA), comparablePackMetadata(packedB));
+    assert.deepEqual((await readdir(path.join(rootReal, 'archive-a'))).sort(), [packedA.filename]);
+    assert.deepEqual((await readdir(path.join(rootReal, 'archive-b'))).sort(), [packedB.filename]);
     const archivePathA = path.join(rootReal, 'archive-a', packedA.filename);
     const archivePathB = path.join(rootReal, 'archive-b', packedB.filename);
     const archiveBytesA = await readFile(archivePathA);
     const archiveBytesB = await readFile(archivePathB);
     assert.deepEqual(archiveBytesA, archiveBytesB);
     const packageIdentity = sha256(archiveBytesA);
-    const archive = tarEntries(archiveBytesA);
-    assertExactSet([...archive.keys()], expectedPaths.map((item) => `package/${item}`), 'packed archive file inventory');
-    const metadata = JSON.parse(archive.get('package/package.json').toString('utf8'));
+    const archiveA = tarEntries(archiveBytesA);
+    const archiveB = tarEntries(archiveBytesB);
+    const releaseA = await releaseFromArchive(archiveA);
+    const releaseB = await releaseFromArchive(archiveB);
+    const treeA = releaseTreeHashes(releaseA);
+    const treeB = releaseTreeHashes(releaseB);
+    assert.deepEqual(treeA, treeB);
+    assert.equal(treeA.length, 44);
+    assert.deepEqual(releaseA.inventoryBytes, releaseB.inventoryBytes);
+    const payloadIdentity = sha256(Buffer.from(`${JSON.stringify(treeA)}\n`));
+    const inventoryIdentity = sha256(releaseA.inventoryBytes);
+    const expectedPaths = await expectedPackagePaths(stageA, releaseA);
+    assertExactSet(dryRun.files.map(({ path: filePath }) => filePath), expectedPaths, 'npm dry-run file inventory');
+    assertExactSet(packedA.files.map(({ path: filePath }) => filePath), expectedPaths, 'first npm pack file inventory');
+    assertExactSet(packedB.files.map(({ path: filePath }) => filePath), expectedPaths, 'second npm pack file inventory');
+    assertExactSet([...archiveA.keys()], expectedPaths.map((item) => `package/${item}`), 'first packed archive file inventory');
+    assertExactSet([...archiveB.keys()], expectedPaths.map((item) => `package/${item}`), 'second packed archive file inventory');
+    const metadata = JSON.parse(archiveA.get('package/package.json').toString('utf8'));
     assert.equal(metadata.name, '@guoxiaoshuai2023/oh-my-harness');
     assert.deepEqual(metadata.bin, { 'oh-my-harness': 'bin/oh-my-harness.mjs' });
     assert.deepEqual(metadata.engines, { node: '>=24 <25' });
     assert.equal(metadata.dependencies, undefined);
     assert.equal(metadata.devDependencies, undefined);
-    for (const name of archive.keys()) {
+    for (const name of archiveA.keys()) {
       assert(!/(?:^|\/)(?:install-state\.json|\.operation-in-progress\.json|__pycache__)(?:\/|$)/.test(name), name);
       assert(!name.includes('.oh-my-harness-backups') && !name.includes('task-docs/history') && !name.includes('/test/'), name);
     }
-    for (const [name, bytes] of archive) {
+    for (const [name, bytes] of archiveA) {
       const text = bytes.toString('utf8');
       assert(!text.includes(ROOT), `local absolute path in ${name}`);
       assert(!/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}/.test(text), `secret-like content in ${name}`);
@@ -440,10 +488,10 @@ export async function validateRelease() {
       assert(!/(?:^|[\s"'`(])docs\/agent-routing(?=$|[\s"'`.,;:!?/)\]}])/m.test(content), item.destinationPath);
     }
     const semantic = await semanticEvidence(releaseA);
-    const guidance = await guidanceEvidence(archive);
+    const guidance = await guidanceEvidence(archiveA);
     const documentationAndCi = await documentationAndCiEvidence(releaseA);
-    const python = await pythonEvidence({ archive, root: rootReal, environment, python: executables.python });
-    await parsePackedToml({ archive, root: rootReal, environment, python: executables.python });
+    const python = await pythonEvidence({ archive: archiveA, root: rootReal, environment, python: executables.python });
+    await parsePackedToml({ archive: archiveA, root: rootReal, environment, python: executables.python });
 
     assert.equal(repositoryStatus(), beforeStatus);
     assert.deepEqual(await repositoryResidue(), []);
@@ -451,13 +499,19 @@ export async function validateRelease() {
       status: 'PASS', nodeVersion: process.version, npmVersion,
       package: {
         name: metadata.name, binary: 'oh-my-harness', version: metadata.version,
-        fileCount: archive.size, dryRunFileCount: dryRun.files.length,
+        fileCount: archiveA.size, dryRunFileCount: dryRun.files.length,
         packageIdentity, payloadIdentity, inventoryIdentity,
         twoBuildPathsBytesHashesIdentical: true, twoArchivesIdentical: true,
+        twoArchiveMetadataIdentical: true,
+      },
+      packLifecycle: {
+        scriptsEnabled: true, privatePackRootProvided: false,
+        manualDistMaterialization: false, postpackRemovedDist: true,
+        dryRuns: 1, realPacks: 2, stagedSourceFiles: stagedA.sourceFiles.length,
       },
       references: { requiredFiles: releaseA.inventory.requiredFiles.length, installedFiles: releaseA.files.size, closure: true, sourceOnlyRuntimePaths: 0 },
       python, semantic, guidance, documentationAndCi,
-      cleanup: { repositoryStatusUnchanged: true, repositoryResidue: [] },
+      cleanup: { repositoryStatusUnchanged: true, repositoryResidue: [], ownedTemporaryRootRemoved: true },
     };
   } finally {
     try {

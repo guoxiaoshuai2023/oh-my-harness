@@ -8,7 +8,9 @@ import { setFilesystemObserverForTests } from '../../src/installer/filesystem.mj
 import { preparePackage, loadReleaseBundle } from '../../src/installer/package-bundle.mjs';
 import { scanManagedBlock } from '../../src/installer/markers.mjs';
 import { STATE_PATH } from '../../src/installer/state.mjs';
-import { ROOT, cloneRelease, readJson, targetFixture, treeSnapshot } from './test-helpers.mjs';
+import {
+  ROOT, cloneRelease, git, readJson, targetFixture, treeSnapshot,
+} from './test-helpers.mjs';
 
 let packageRoot;
 let release;
@@ -55,6 +57,28 @@ test('install materializes the complete fixed bundle, preserves binary outer byt
   assert.equal(state.installer.packageName, '@guoxiaoshuai2023/oh-my-harness');
   assert.equal(state.installer.binaryName, 'oh-my-harness');
   assert.equal(await readFile(path.join(target, '.oh-my-harness/.operation-in-progress.json')).catch(() => null), null);
+});
+
+test('fresh unborn Git repository without an index installs while unrelated dirty content and Git metadata stay unchanged', async (t) => {
+  const { target } = await targetFixture(t);
+  git(target, ['init', '-q']);
+  const head = (await readFile(path.join(target, '.git/HEAD'), 'utf8')).trim();
+  assert.match(head, /^ref: refs\/heads\/[A-Za-z0-9][A-Za-z0-9._-]*$/);
+  assert.equal(await readFile(path.join(target, '.git/index')).catch(() => null), null);
+  assert.equal(await readFile(path.join(target, '.git', ...head.slice(5).split('/'))).catch(() => null), null);
+  assert.equal(await readFile(path.join(target, '.git/packed-refs')).catch(() => null), null);
+  await writeFile(path.join(target, 'unrelated-target-content.txt'), 'unrelated dirty content\n');
+  const gitBefore = await treeSnapshot(path.join(target, '.git'));
+
+  const planned = await createLifecyclePlan({ operation: 'install', target, release });
+  assert.equal(planned.plan.status, 'READY');
+  assert.equal(planned.plan.gitOverlap.status, 'clean');
+  assert.deepEqual(planned.plan.gitOverlap.paths, []);
+  await applyLifecyclePlan({ planned, target, release });
+
+  assert.deepEqual(await treeSnapshot(path.join(target, '.git')), gitBefore);
+  assert.equal((await readFile(path.join(target, 'unrelated-target-content.txt'))).toString(), 'unrelated dirty content\n');
+  assert.equal((await readJson(target, STATE_PATH)).installedVersion, '0.1.0');
 });
 
 test('same-version install and update are byte-for-byte no-ops including state timestamps', async (t) => {

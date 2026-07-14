@@ -342,17 +342,44 @@ function parseGitStatus(output) {
   return rows;
 }
 
+function safeSymbolicReference(value) {
+  const match = value.match(/^refs\/(heads|tags)\/(.+)$/);
+  if (!match) return false;
+  const segments = match[2].split('/');
+  return segments.every((segment) => /^[A-Za-z0-9._-]+$/.test(segment)
+    && segment !== '.' && !segment.includes('..') && !segment.endsWith('.') && !segment.endsWith('.lock'));
+}
+
+function inheritedObjectRoutingPresent() {
+  return ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_OBJECT_DIRECTORY', 'GIT_REPLACE_REF_BASE']
+    .some((name) => typeof process.env[name] === 'string' && process.env[name].length > 0);
+}
+
 export async function exactGitOverlap(targetRoot, relativePaths) {
   const dotGit = await inspectContained(targetRoot, '.git');
   if (dotGit.type === 'absent') return { status: 'not-a-git-repository', paths: [], evidence: null };
   if (dotGit.type !== 'directory') return { status: 'unsafe-git-layout', paths: [], evidence: null };
-  const required = ['.git/HEAD', '.git/index'];
+  if (inheritedObjectRoutingPresent()) return { status: 'unsafe-git-layout', paths: [], evidence: null };
+  let indexInfo;
+  let packedRefs = [];
   try {
-    for (const item of required) await inspectContained(targetRoot, item, { allowMissing: false, expect: 'file' });
+    await inspectContained(targetRoot, '.git/HEAD', { allowMissing: false, expect: 'file' });
+    indexInfo = await inspectContained(targetRoot, '.git/index');
+    if (!['absent', 'file'].includes(indexInfo.type)) throw new Error('unsafe Git index');
     await inspectContained(targetRoot, '.git/objects', { allowMissing: false, expect: 'directory' });
     if ((await inspectContained(targetRoot, '.git/objects/info/alternates')).type !== 'absent') {
       return { status: 'unsafe-git-layout', paths: [], evidence: null };
     }
+    if ((await inspectContained(targetRoot, '.git/refs/replace')).type !== 'absent') {
+      return { status: 'unsafe-git-layout', paths: [], evidence: null };
+    }
+    const packedInfo = await inspectContained(targetRoot, '.git/packed-refs');
+    if (packedInfo.type === 'file') {
+      packedRefs = (await readContainedFile(targetRoot, '.git/packed-refs')).toString('ascii').split('\n');
+      if (packedRefs.some((line) => /^[0-9a-f]{40} refs\/replace\//.test(line))) {
+        return { status: 'unsafe-git-layout', paths: [], evidence: null };
+      }
+    } else if (packedInfo.type !== 'absent') throw new Error('unsafe packed refs');
     await validateObjectTree(targetRoot, '.git/objects');
   } catch {
     return { status: 'unsafe-git-layout', paths: [], evidence: null };
@@ -360,24 +387,25 @@ export async function exactGitOverlap(targetRoot, relativePaths) {
 
   const head = (await readContainedFile(targetRoot, '.git/HEAD')).toString('ascii').trim();
   let oid = null;
+  let reference = null;
+  let unborn = false;
   if (/^[0-9a-f]{40}$/.test(head)) oid = head;
-  else if (/^ref: refs\/(?:heads|tags)\/[A-Za-z0-9._\/-]+$/.test(head) && !head.includes('..')) {
-    const reference = head.slice(5);
+  else if (head.startsWith('ref: ') && safeSymbolicReference(head.slice(5))) {
+    reference = head.slice(5);
     const loose = `.git/${reference}`;
     const looseInfo = await inspectContained(targetRoot, loose);
     if (looseInfo.type === 'file') {
       const value = (await readContainedFile(targetRoot, loose)).toString('ascii').trim();
       if (/^[0-9a-f]{40}$/.test(value)) oid = value;
-    } else {
-      const packedInfo = await inspectContained(targetRoot, '.git/packed-refs');
-      if (packedInfo.type === 'file') {
-        const matches = (await readContainedFile(targetRoot, '.git/packed-refs')).toString('ascii').split('\n')
-          .filter((line) => line.endsWith(` ${reference}`));
-        if (matches.length === 1 && /^[0-9a-f]{40} /.test(matches[0])) oid = matches[0].slice(0, 40);
-      }
+    } else if (looseInfo.type === 'absent') {
+      const matches = packedRefs.filter((line) => line.endsWith(` ${reference}`));
+      if (matches.length === 1 && /^[0-9a-f]{40} /.test(matches[0])) oid = matches[0].slice(0, 40);
+      else if (matches.length === 0 && reference.startsWith('refs/heads/')) unborn = true;
     }
   }
-  if (!oid) return { status: 'unsafe-git-layout', paths: [], evidence: null };
+  if ((!oid && !unborn) || (oid && indexInfo.type !== 'file')) {
+    return { status: 'unsafe-git-layout', paths: [], evidence: null };
+  }
 
   let temporaryRoot;
   try {
@@ -386,10 +414,12 @@ export async function exactGitOverlap(targetRoot, relativePaths) {
     const tempGit = path.join(temporaryRoot, 'git');
     const shadow = path.join(temporaryRoot, 'shadow');
     await mkdir(path.join(tempGit, 'objects', 'info'), { recursive: true });
-    await mkdir(path.join(tempGit, 'refs'), { recursive: true });
+    await mkdir(path.join(tempGit, 'refs', 'heads'), { recursive: true });
     await mkdir(shadow, { recursive: true });
-    await writeFile(path.join(tempGit, 'HEAD'), `${oid}\n`, { flag: 'wx' });
-    await writeFile(path.join(tempGit, 'index'), await readContainedFile(targetRoot, '.git/index'), { flag: 'wx' });
+    await writeFile(path.join(tempGit, 'HEAD'), unborn ? `ref: ${reference}\n` : `${oid}\n`, { flag: 'wx' });
+    if (indexInfo.type === 'file') {
+      await writeFile(path.join(tempGit, 'index'), await readContainedFile(targetRoot, '.git/index'), { flag: 'wx' });
+    }
     await writeFile(path.join(tempGit, 'config'), '[core]\n\trepositoryformatversion = 0\n\tbare = false\n\thooksPath = /dev/null\n', { flag: 'wx' });
     await writeFile(path.join(tempGit, 'objects', 'info', 'alternates'), `${containedPath(targetRoot, '.git/objects')}\n`, { flag: 'wx' });
 
@@ -416,7 +446,8 @@ export async function exactGitOverlap(targetRoot, relativePaths) {
       `PATH=${path.dirname(executable)}`,
       `HOME=${path.join(temporaryRoot, 'home')}`,
       `XDG_CONFIG_HOME=${path.join(temporaryRoot, 'xdg')}`,
-      'GIT_CONFIG_NOSYSTEM=1', 'GIT_TERMINAL_PROMPT=0', 'GIT_PAGER=cat',
+      'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_SYSTEM=/dev/null', 'GIT_CONFIG_NOSYSTEM=1',
+      'GIT_NO_REPLACE_OBJECTS=1', 'GIT_TERMINAL_PROMPT=0', 'GIT_PAGER=cat',
       'GIT_OPTIONAL_LOCKS=0', 'GIT_LITERAL_PATHSPECS=1', 'LC_ALL=C',
     ];
     await mkdir(path.join(temporaryRoot, 'home'));

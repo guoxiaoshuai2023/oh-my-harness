@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { loadReleaseBundle } from '../../src/installer/package-bundle.mjs';
+import { validateReleaseContents } from '../../src/installer/package-bundle.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const EXPECTED_CHILDREN = ['archive', 'cache', 'fixtures', 'home', 'logs', 'package', 'tmp', 'xdg'];
@@ -59,10 +59,10 @@ async function forbiddenRepositoryResidue() {
   return present;
 }
 
-function isolatedEnvironment(root, npmExecutable) {
+function isolatedEnvironment(root, npmExecutable, { ignoreInstallScripts = false } = {}) {
   const nodeDirectory = path.dirname(process.execPath);
   const npmDirectory = path.dirname(npmExecutable);
-  return {
+  const environment = {
     PATH: `${nodeDirectory}:${npmDirectory}:/usr/bin:/bin`,
     HOME: path.join(root, 'home'),
     XDG_CONFIG_HOME: path.join(root, 'xdg'),
@@ -73,13 +73,14 @@ function isolatedEnvironment(root, npmExecutable) {
     npm_config_logs_dir: path.join(root, 'logs'),
     npm_config_tmp: path.join(root, 'tmp'),
     npm_config_offline: 'true',
-    npm_config_ignore_scripts: 'true',
     npm_config_audit: 'false',
     npm_config_fund: 'false',
     npm_config_update_notifier: 'false',
     npm_config_progress: 'false',
     npm_config_registry: 'http://127.0.0.1:9',
   };
+  if (ignoreInstallScripts) environment.npm_config_ignore_scripts = 'true';
+  return environment;
 }
 
 function spawnIsolated(executable, args, { cwd, environment }) {
@@ -118,12 +119,25 @@ function tarEntries(archiveBytes) {
   return entries;
 }
 
+async function stageFile(packageRoot, relativePath) {
+  const destination = path.join(packageRoot, ...relativePath.split('/'));
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(path.join(ROOT, ...relativePath.split('/')), destination, { errorOnExist: true, force: false });
+}
+
 async function stagePackage(packageRoot) {
   await cp(path.join(ROOT, 'bin'), path.join(packageRoot, 'bin'), { recursive: true, errorOnExist: true, force: false });
   await mkdir(path.join(packageRoot, 'src'));
   await cp(path.join(ROOT, 'src/installer'), path.join(packageRoot, 'src/installer'), { recursive: true, errorOnExist: true, force: false });
-  await cp(path.join(ROOT, 'README.md'), path.join(packageRoot, 'README.md'), { errorOnExist: true, force: false });
-  await cp(path.join(ROOT, 'package.json'), path.join(packageRoot, 'package.json'), { errorOnExist: true, force: false });
+  await cp(path.join(ROOT, 'src/bundle'), path.join(packageRoot, 'src/bundle'), { recursive: true, errorOnExist: true, force: false });
+  const bundleMap = JSON.parse(await readFile(path.join(ROOT, 'packaging/bundle-map.json'), 'utf8'));
+  const sourceFiles = new Set([
+    'AGENTS.md', 'package.json', 'packaging/bundle-map.json', 'packaging/managed-router-block.md',
+    'packaging/package-contract.json', 'packaging/schemas/bundle-inventory.schema.json',
+    'packaging/schemas/package-contract.schema.json',
+    ...bundleMap.entries.map((entry) => entry.source),
+  ]);
+  for (const relativePath of [...sourceFiles].sort()) await stageFile(packageRoot, relativePath);
 }
 
 async function expectedArchivePaths(packageRoot, release) {
@@ -137,7 +151,12 @@ async function expectedArchivePaths(packageRoot, release) {
 
 async function inspectArchive(archivePath, packageRoot) {
   const archive = tarEntries(await readFile(archivePath));
-  const release = await loadReleaseBundle({ packageRoot, packageVersion: '0.1.0' });
+  const inventoryPath = 'package/dist/.oh-my-harness/bundle-inventory.json';
+  const release = await validateReleaseContents({
+    inventoryBytes: archive.get(inventoryPath),
+    readPayload: async (relativePath) => archive.get(`package/dist/${relativePath}`) ?? null,
+    packageVersion: '0.1.0',
+  });
   const expected = await expectedArchivePaths(packageRoot, release);
   assertSetEqual(new Set(archive.keys()), expected, 'archive allowlist');
   const metadata = JSON.parse(archive.get('package/package.json').toString('utf8'));
@@ -145,6 +164,11 @@ async function inspectArchive(archivePath, packageRoot) {
       || metadata.bin?.['oh-my-harness'] !== 'bin/oh-my-harness.mjs'
       || metadata.engines?.node !== '>=24 <25' || metadata.dependencies || metadata.devDependencies) {
     throw new Error('packed package metadata does not match the fixed contract');
+  }
+  if (metadata.scripts?.prepack !== 'node src/installer/package-bundle.mjs prepare --pack-root "$OH_MY_HARNESS_PACK_ROOT"'
+      || metadata.scripts?.postpack !== 'node src/installer/package-bundle.mjs cleanup'
+      || metadata.scripts?.['validate:package'] !== 'node test/lifecycle/package-validation.mjs') {
+    throw new Error('packed package lifecycle metadata does not match the fixed contract');
   }
   for (const [relativePath, bytes] of release.files) {
     const packed = archive.get(`package/dist/${relativePath}`);
@@ -162,7 +186,45 @@ async function inspectArchive(archivePath, packageRoot) {
       }
     }
   }
-  return { archive, release };
+  return { archive, release, expected };
+}
+
+function parsePackJson(stdout, label) {
+  let value;
+  try {
+    value = JSON.parse(stdout);
+  } catch {
+    throw new Error(`${label} did not return JSON metadata`);
+  }
+  if (!Array.isArray(value) || value.length !== 1 || !Array.isArray(value[0].files)) {
+    throw new Error(`${label} returned an unexpected metadata shape`);
+  }
+  return value[0];
+}
+
+function packPaths(metadata) {
+  return new Set(metadata.files.map((item) => item.path));
+}
+
+function expectedPackPaths(expectedArchivePaths) {
+  return new Set([...expectedArchivePaths].map((item) => item.slice('package/'.length)));
+}
+
+async function assertPackCleanup(packageRoot) {
+  if ((await lstat(path.join(packageRoot, 'dist')).then(() => true).catch((error) => {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }))) throw new Error('standard package lifecycle retained generated dist output');
+  const archives = (await readdir(packageRoot)).filter((name) => name.endsWith('.tgz'));
+  if (archives.length) throw new Error('standard package lifecycle wrote an archive into package source');
+}
+
+function comparablePackMetadata(metadata) {
+  return {
+    id: metadata.id, name: metadata.name, version: metadata.version, filename: metadata.filename,
+    size: metadata.size, unpackedSize: metadata.unpackedSize, shasum: metadata.shasum,
+    integrity: metadata.integrity, files: metadata.files,
+  };
 }
 
 function assertSetEqual(actual, expected, label) {
@@ -216,10 +278,16 @@ export async function validatePackage() {
     for (const child of EXPECTED_CHILDREN) await mkdir(path.join(rootReal, child));
     await writeFile(path.join(rootReal, 'user.npmrc'), '', { flag: 'wx', mode: 0o600 });
     await writeFile(path.join(rootReal, 'global.npmrc'), '', { flag: 'wx', mode: 0o600 });
-    await stagePackage(path.join(rootReal, 'package'));
+    const packageRoot = path.join(rootReal, 'package');
+    const archiveRoot = path.join(rootReal, 'archive');
+    await stagePackage(packageRoot);
     const npmExecutable = resolveExecutable('npm');
     const npxExecutable = resolveExecutable('npx');
     const environment = isolatedEnvironment(rootReal, npmExecutable);
+    if (Object.hasOwn(environment, 'npm_config_ignore_scripts')
+        || Object.hasOwn(environment, 'OH_MY_HARNESS_PACK_ROOT')) {
+      throw new Error('standard package lifecycle environment is not scripts-enabled and private-variable-free');
+    }
 
     const injectedStatus = Number.parseInt(process.env.OH_MY_HARNESS_TEST_CHILD_STATUS ?? '0', 10);
     if (injectedStatus > 0) {
@@ -227,41 +295,87 @@ export async function validatePackage() {
       primaryStatus = injected.status;
     }
 
-    if (primaryStatus === 0) {
-      const prepare = spawnIsolated(process.execPath, [
-        path.join(ROOT, 'src/installer/package-bundle.mjs'), 'prepare', '--pack-root', path.join(rootReal, 'package'),
-      ], { cwd: ROOT, environment });
-      if (prepare.status !== 0) primaryStatus = prepare.status;
-    }
-
+    let dryRunMetadata = null;
     let archivePath = null;
     if (primaryStatus === 0) {
-      const pack = spawnIsolated(npmExecutable, [
-        'pack', '--ignore-scripts', '--offline', '--json', '--pack-destination', path.join(rootReal, 'archive'),
-      ], { cwd: path.join(rootReal, 'package'), environment });
-      if (pack.status !== 0) primaryStatus = pack.status;
-      else {
-        const archives = (await readdir(path.join(rootReal, 'archive'))).filter((name) => name.endsWith('.tgz'));
-        if (archives.length !== 1) primaryStatus = 1;
-        else archivePath = path.join(rootReal, 'archive', archives[0]);
-      }
-    }
-
-    let archiveEvidence = null;
-    if (primaryStatus === 0) {
-      try {
-        const inspected = await inspectArchive(archivePath, path.join(rootReal, 'package'));
-        archiveEvidence = { fileCount: inspected.archive.size, sha256: hash(await readFile(archivePath)) };
+      const dryRun = spawnIsolated(npmExecutable, ['pack', '--dry-run', '--json'], {
+        cwd: packageRoot, environment,
+      });
+      if (dryRun.status !== 0) primaryStatus = dryRun.status;
+      else try {
+        dryRunMetadata = parsePackJson(dryRun.stdout, 'npm pack --dry-run --json');
+        await assertPackCleanup(packageRoot);
+        if ((await readdir(archiveRoot)).length !== 0) throw new Error('pack dry-run wrote an archive');
       } catch {
         primaryStatus = 1;
       }
     }
 
+    let archiveEvidence = null;
+    if (primaryStatus === 0) {
+      const firstPack = spawnIsolated(npmExecutable, [
+        'pack', '--json', '--pack-destination', archiveRoot,
+      ], { cwd: packageRoot, environment });
+      if (firstPack.status !== 0) primaryStatus = firstPack.status;
+      else try {
+        const firstMetadata = parsePackJson(firstPack.stdout, 'npm pack --json');
+        await assertPackCleanup(packageRoot);
+        const archives = (await readdir(archiveRoot)).filter((name) => name.endsWith('.tgz'));
+        if (archives.length !== 1) throw new Error('real pack did not create exactly one archive');
+        archivePath = path.join(archiveRoot, archives[0]);
+        const firstInspected = await inspectArchive(archivePath, packageRoot);
+        const expectedPaths = expectedPackPaths(firstInspected.expected);
+        assertSetEqual(packPaths(dryRunMetadata), expectedPaths, 'dry-run package allowlist');
+        assertSetEqual(packPaths(firstMetadata), expectedPaths, 'real package allowlist');
+        if (JSON.stringify(comparablePackMetadata(dryRunMetadata))
+            !== JSON.stringify(comparablePackMetadata(firstMetadata))) {
+          throw new Error('dry-run and real pack metadata are not deterministic');
+        }
+        const firstHash = hash(await readFile(archivePath));
+        await rm(archivePath, { force: false });
+        if ((await readdir(archiveRoot)).length !== 0) throw new Error('first deterministic archive cleanup failed');
+
+        const secondPack = spawnIsolated(npmExecutable, [
+          'pack', '--json', '--pack-destination', archiveRoot,
+        ], { cwd: packageRoot, environment });
+        if (secondPack.status !== 0) {
+          primaryStatus = secondPack.status;
+        } else {
+          const secondMetadata = parsePackJson(secondPack.stdout, 'repeated npm pack --json');
+          await assertPackCleanup(packageRoot);
+          const repeatedArchives = (await readdir(archiveRoot)).filter((name) => name.endsWith('.tgz'));
+          if (repeatedArchives.length !== 1) throw new Error('repeated pack did not create exactly one archive');
+          archivePath = path.join(archiveRoot, repeatedArchives[0]);
+          const secondInspected = await inspectArchive(archivePath, packageRoot);
+          assertSetEqual(secondInspected.expected, firstInspected.expected, 'repeated archive allowlist');
+          if (JSON.stringify(comparablePackMetadata(secondMetadata))
+              !== JSON.stringify(comparablePackMetadata(firstMetadata))) {
+            throw new Error('repeated pack metadata is not deterministic');
+          }
+          const secondHash = hash(await readFile(archivePath));
+          if (secondHash !== firstHash) throw new Error('repeated package archive bytes are not deterministic');
+          archiveEvidence = {
+            fileCount: secondInspected.archive.size,
+            sha256: secondHash,
+            repeatedSha256: firstHash,
+            dryRunFileCount: dryRunMetadata.files.length,
+            scriptsEnabled: true,
+            privatePackRootProvided: false,
+          };
+        }
+      } catch {
+        if (primaryStatus === 0) primaryStatus = 1;
+      }
+    }
+
+    if (primaryStatus === 0 && !archiveEvidence) primaryStatus = 1;
+
     let smoke = null;
     if (primaryStatus === 0) {
       try {
+        const installEnvironment = isolatedEnvironment(rootReal, npmExecutable, { ignoreInstallScripts: true });
         smoke = await localArchiveSmoke({
-          npxExecutable, archivePath, fixtures: path.join(rootReal, 'fixtures'), environment,
+          npxExecutable, archivePath, fixtures: path.join(rootReal, 'fixtures'), environment: installEnvironment,
         });
       } catch (error) {
         primaryStatus = Number.isInteger(error.childStatus) && error.childStatus !== 0 ? error.childStatus : 1;

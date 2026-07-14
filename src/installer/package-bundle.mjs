@@ -1,4 +1,6 @@
-import { mkdir, readFile, realpath } from 'node:fs/promises';
+import {
+  lstat, mkdir, readFile, readdir, realpath, rm,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalBytes, LifecycleError, sha256 } from './filesystem.mjs';
@@ -54,12 +56,8 @@ function validateReferences(files, inventory) {
   for (const agentPath of inventory.ownership.agentPaths) validateProfile(files.get(agentPath), agentPath);
 }
 
-export async function loadReleaseBundle({ packageRoot = PACKAGE_ROOT, packageVersion = '0.1.0' } = {}) {
-  const bundleRoot = path.join(packageRoot, 'dist');
-  let inventoryBytes;
-  try {
-    inventoryBytes = await readFile(path.join(bundleRoot, '.oh-my-harness', 'bundle-inventory.json'));
-  } catch {
+export async function validateReleaseContents({ inventoryBytes, readPayload, packageVersion = '0.1.0' }) {
+  if (!inventoryBytes) {
     packageError('fixed package bundle is unavailable', '.oh-my-harness/bundle-inventory.json');
   }
   let inventory;
@@ -71,12 +69,12 @@ export async function loadReleaseBundle({ packageRoot = PACKAGE_ROOT, packageVer
   validateInventory(inventory, { packageVersion });
   const files = new Map();
   for (const item of inventory.requiredFiles) {
-    const bytes = await readFile(path.join(bundleRoot, ...item.destinationPath.split('/'))).catch(() => null);
+    const bytes = await readPayload(item.destinationPath);
     if (!bytes || sha256(bytes) !== item.destinationSha256) packageError('fixed package payload hash mismatch', item.destinationPath);
     files.set(item.destinationPath, bytes);
   }
   const blockPath = inventory.managedBlock.assetPath;
-  const block = await readFile(path.join(bundleRoot, ...blockPath.split('/'))).catch(() => null);
+  const block = await readPayload(blockPath);
   if (!block || sha256(block) !== inventory.managedBlock.sha256 || block.at(-1) !== 0x0a) {
     packageError('fixed managed block hash or newline mismatch', blockPath);
   }
@@ -84,8 +82,21 @@ export async function loadReleaseBundle({ packageRoot = PACKAGE_ROOT, packageVer
   files.set('.oh-my-harness/bundle-inventory.json', inventoryBytes);
   validateReferences(files, inventory);
   return {
-    packageRoot: await realpath(packageRoot), bundleRoot, inventory, inventoryBytes,
-    files, ownedFiles: releaseOwnedFiles(inventory, inventoryBytes), managedBlock: block,
+    inventory, inventoryBytes, files, ownedFiles: releaseOwnedFiles(inventory, inventoryBytes), managedBlock: block,
+  };
+}
+
+export async function loadReleaseBundle({ packageRoot = PACKAGE_ROOT, packageVersion = '0.1.0' } = {}) {
+  const bundleRoot = path.join(packageRoot, 'dist');
+  const inventoryPath = '.oh-my-harness/bundle-inventory.json';
+  const inventoryBytes = await readFile(path.join(bundleRoot, ...inventoryPath.split('/'))).catch(() => null);
+  const release = await validateReleaseContents({
+    inventoryBytes,
+    readPayload: (relativePath) => readFile(path.join(bundleRoot, ...relativePath.split('/'))).catch(() => null),
+    packageVersion,
+  });
+  return {
+    packageRoot: await realpath(packageRoot), bundleRoot, ...release,
   };
 }
 
@@ -100,20 +111,91 @@ export async function preparePackage({ packRoot, sourceRoot = PACKAGE_ROOT, vers
   return { ...result, releaseFileCount: release.files.size, packRoot: canonicalPackRoot };
 }
 
-function parsePrepareArguments(argv) {
-  if (argv.length !== 3 || argv[0] !== 'prepare' || argv[1] !== '--pack-root' || !argv[2]) {
-    throw new Error('usage: package-bundle.mjs prepare --pack-root <absolute-directory>');
+function expectedBundleDirectories(files) {
+  const directories = new Set();
+  for (const relativePath of files.keys()) {
+    let directory = path.posix.dirname(relativePath);
+    while (directory !== '.') {
+      directories.add(directory);
+      directory = path.posix.dirname(directory);
+    }
   }
-  return argv[2];
+  return directories;
+}
+
+async function generatedBundleTree(root, relativeDirectory = '') {
+  const files = new Set();
+  const directories = new Set();
+  const directory = relativeDirectory ? path.join(root, ...relativeDirectory.split('/')) : root;
+  for (const entry of await readdir(directory)) {
+    const relativePath = relativeDirectory ? `${relativeDirectory}/${entry}` : entry;
+    const absolute = path.join(root, ...relativePath.split('/'));
+    const info = await lstat(absolute);
+    if (info.isDirectory()) {
+      directories.add(relativePath);
+      const nested = await generatedBundleTree(root, relativePath);
+      for (const item of nested.files) files.add(item);
+      for (const item of nested.directories) directories.add(item);
+    } else if (info.isFile()) files.add(relativePath);
+    else packageError('generated package output has an unsafe entry', relativePath);
+  }
+  return { files, directories };
+}
+
+function assertExactSet(actual, expected, label) {
+  const extra = [...actual].filter((item) => !expected.has(item));
+  const missing = [...expected].filter((item) => !actual.has(item));
+  if (extra.length || missing.length) {
+    throw new Error(`${label} does not match generated package ownership`);
+  }
+}
+
+async function assertOwnedGeneratedBundle(outputDir, version) {
+  const release = await loadReleaseBundle({ packageRoot: path.dirname(outputDir), packageVersion: version });
+  const tree = await generatedBundleTree(outputDir);
+  assertExactSet(tree.files, new Set(release.files.keys()), 'generated package files');
+  assertExactSet(tree.directories, expectedBundleDirectories(release.files), 'generated package directories');
+}
+
+export async function cleanupPackage({ packRoot = PACKAGE_ROOT, version = '0.1.0' } = {}) {
+  if (!path.isAbsolute(packRoot)) throw new Error('pack root must be absolute');
+  const canonicalPackRoot = await realpath(packRoot);
+  const outputDir = path.join(canonicalPackRoot, 'dist');
+  const outputInfo = await lstat(outputDir);
+  if (!outputInfo.isDirectory() || outputInfo.isSymbolicLink()
+      || await realpath(outputDir) !== outputDir) {
+    throw new Error('generated package output is not an owned package-local directory');
+  }
+  await assertOwnedGeneratedBundle(outputDir, version);
+  await rm(outputDir, { recursive: true, force: false });
+  try {
+    await lstat(outputDir);
+    throw new Error('generated package output cleanup did not verify');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  return { packRoot: canonicalPackRoot, removed: 'dist' };
+}
+
+function parseArguments(argv) {
+  if (argv[0] === 'prepare'
+      && (argv.length === 1 || (argv.length === 3 && argv[1] === '--pack-root'))) {
+    return { operation: 'prepare', packRoot: argv[2] || PACKAGE_ROOT };
+  }
+  if (argv[0] === 'cleanup' && argv.length === 1) {
+    return { operation: 'cleanup', packRoot: PACKAGE_ROOT };
+  }
+  throw new Error('usage: package-bundle.mjs prepare [--pack-root <absolute-directory>] | cleanup');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const packRoot = parsePrepareArguments(process.argv.slice(2));
-    const result = await preparePackage({ packRoot });
-    process.stdout.write(`${JSON.stringify({ packRoot: result.packRoot, outputFileCount: result.outputFileCount })}\n`);
+    const { operation, packRoot } = parseArguments(process.argv.slice(2));
+    if (operation === 'prepare') {
+      await preparePackage({ packRoot });
+    } else await cleanupPackage({ packRoot });
   } catch (error) {
-    process.stderr.write(`package bundle preparation failed: ${error.message}\n`);
+    process.stderr.write(`package bundle lifecycle failed: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

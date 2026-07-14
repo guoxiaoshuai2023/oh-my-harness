@@ -51,12 +51,44 @@ test('T4-AC2 matrix completely and discriminatingly maps AS-01 through AS-12', (
 });
 
 test('AS-01 empty repository installs the complete fixed scoped release', async (t) => {
-  const { target } = await targetFixture(t);
+  const { parent, target } = await targetFixture(t);
+  const xdg = path.join(parent, 'xdg');
+  await mkdir(xdg);
+  const gitEnvironment = {
+    PATH: process.env.PATH,
+    HOME: parent,
+    XDG_CONFIG_HOME: xdg,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_OPTIONAL_LOCKS: '0',
+    LC_ALL: 'C',
+  };
+  const git = (args) => spawnSync('git', args, {
+    cwd: target, env: gitEnvironment, encoding: 'utf8',
+  });
+  const initialized = git(['init', '-q']);
+  assert.equal(initialized.status, 0, initialized.stderr);
+  const symbolicHead = git(['symbolic-ref', '-q', 'HEAD']);
+  assert.equal(symbolicHead.status, 0, symbolicHead.stderr);
+  const headRef = symbolicHead.stdout.trim();
+  assert.match(headRef, /^refs\/heads\/[^/]+$/);
+  assert.notEqual(git(['rev-parse', '--verify', 'HEAD']).status, 0);
+  assert.equal(await readFile(path.join(target, '.git/index')).catch(() => null), null);
+  assert.equal(await readFile(path.join(target, '.git', ...headRef.split('/'))).catch(() => null), null);
+  const tracked = git(['ls-files', '-z']);
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.equal(tracked.stdout.length, 0);
+  const gitBefore = await treeSnapshot(path.join(target, '.git'));
+
   const planned = await createLifecyclePlan({ operation: 'install', target, release });
   assert.equal(planned.plan.status, 'READY');
+  assert.equal(planned.plan.gitOverlap.status, 'clean');
+  assert.deepEqual(planned.plan.gitOverlap.paths, []);
   assert.equal(planned.plan.creates.length, release.files.size + 1);
   const result = await applyLifecyclePlan({ planned, target, release });
   assert.equal(result.report.success, true);
+  assert.deepEqual(await treeSnapshot(path.join(target, '.git')), gitBefore);
   for (const [relativePath, expected] of release.files) {
     assert.deepEqual(await readFile(path.join(target, ...relativePath.split('/'))), expected, relativePath);
   }

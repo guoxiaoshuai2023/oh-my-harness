@@ -7,10 +7,12 @@ import path from 'node:path';
 import { applyLifecyclePlan, createLifecyclePlan } from '../../src/installer/lifecycle.mjs';
 import { canonicalBytes, setFilesystemObserverForTests, sha256 } from '../../src/installer/filesystem.mjs';
 import { scanManagedBlock } from '../../src/installer/markers.mjs';
-import { preparePackage, loadReleaseBundle } from '../../src/installer/package-bundle.mjs';
+import {
+  cleanupPackage, preparePackage, loadReleaseBundle,
+} from '../../src/installer/package-bundle.mjs';
 import { STATE_PATH } from '../../src/installer/state.mjs';
 import {
-  cloneRelease, initializeGit, ROOT, targetFixture, treeSnapshot,
+  cloneRelease, git, initializeGit, ROOT, targetFixture, treeSnapshot,
 } from './test-helpers.mjs';
 
 let packageRoot;
@@ -204,6 +206,86 @@ test('sanitized exact Git overlap ignores target hooks/config/filters and report
   assert.equal(await readFile(canary).catch(() => null), null);
   assert(!events.some((event) => event.path === '.git/config'));
   assert.equal(events.filter((event) => event.operation === 'spawn' && event.detail === 'sanitized-status').length, 1);
+});
+
+test('unborn Git reports only exact planned untracked or staged overlap', async (t) => {
+  const overlap = '.codex/agents/oh-my-harness-planner.toml';
+
+  const untracked = await targetFixture(t);
+  git(untracked.target, ['init', '-q']);
+  await mkdir(path.join(untracked.target, '.codex/agents'), { recursive: true });
+  await writeFile(path.join(untracked.target, ...overlap.split('/')), 'untracked overlap\n');
+  await writeFile(path.join(untracked.target, 'unrelated.txt'), 'unrelated\n');
+  const untrackedBefore = await treeSnapshot(untracked.target);
+  const untrackedPlan = await createLifecyclePlan({ operation: 'install', target: untracked.target, release });
+  assert.equal(untrackedPlan.plan.gitOverlap.status, 'overlap');
+  assert.deepEqual(untrackedPlan.plan.gitOverlap.paths, [{ path: overlap, state: 'untracked' }]);
+  assert(untrackedPlan.plan.conflicts.some((item) => item.code === 'DIRTY_OVERLAP' && item.path === overlap));
+  assert.deepEqual(await treeSnapshot(untracked.target), untrackedBefore);
+
+  const staged = await targetFixture(t);
+  git(staged.target, ['init', '-q']);
+  await mkdir(path.join(staged.target, '.codex/agents'), { recursive: true });
+  await writeFile(path.join(staged.target, ...overlap.split('/')), 'staged overlap\n');
+  git(staged.target, ['add', '--', overlap]);
+  const stagedBefore = await treeSnapshot(staged.target);
+  const stagedPlan = await createLifecyclePlan({ operation: 'install', target: staged.target, release });
+  assert.equal(stagedPlan.plan.gitOverlap.status, 'overlap');
+  assert.deepEqual(stagedPlan.plan.gitOverlap.paths, [{ path: overlap, state: 'staged' }]);
+  assert(stagedPlan.plan.conflicts.some((item) => item.code === 'DIRTY_OVERLAP' && item.path === overlap));
+  assert.deepEqual(await treeSnapshot(staged.target), stagedBefore);
+});
+
+test('target and inherited alternate or replacement routing stops before sanitized Git execution', async (t) => {
+  await t.test('target alternates', async (subtest) => {
+    const { parent, target } = await targetFixture(subtest);
+    await initializeGit(target);
+    await writeFile(path.join(target, '.git/objects/info/alternates'), `${path.join(parent, 'outside-objects')}\n`);
+    const events = [];
+    const restore = setFilesystemObserverForTests((event) => events.push(event));
+    const planned = await createLifecyclePlan({ operation: 'install', target, release }).finally(restore);
+    assert.equal(planned.plan.gitOverlap.status, 'unsafe-git-layout');
+    assert(planned.plan.conflicts.some((item) => item.code === 'IO_UNAVAILABLE' && item.path === '.git'));
+    assert(!events.some((event) => event.operation === 'spawn'));
+  });
+
+  await t.test('target replacements', async (subtest) => {
+    const { target } = await targetFixture(subtest);
+    await initializeGit(target);
+    await mkdir(path.join(target, '.git/refs/replace'));
+    const planned = await createLifecyclePlan({ operation: 'install', target, release });
+    assert.equal(planned.plan.gitOverlap.status, 'unsafe-git-layout');
+    assert(planned.plan.conflicts.some((item) => item.code === 'IO_UNAVAILABLE' && item.path === '.git'));
+  });
+
+  await t.test('inherited alternates', async (subtest) => {
+    assert.equal(Object.hasOwn(process.env, 'GIT_ALTERNATE_OBJECT_DIRECTORIES'), false);
+    const { parent, target } = await targetFixture(subtest);
+    await initializeGit(target);
+    process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES = path.join(parent, 'outside-objects');
+    try {
+      const planned = await createLifecyclePlan({ operation: 'install', target, release });
+      assert.equal(planned.plan.gitOverlap.status, 'unsafe-git-layout');
+      assert(planned.plan.conflicts.some((item) => item.code === 'IO_UNAVAILABLE' && item.path === '.git'));
+    } finally {
+      delete process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
+    }
+  });
+});
+
+test('package cleanup removes only an exact validated generated bundle', async (t) => {
+  const cleanRoot = await mkdtemp(path.join(os.tmpdir(), 'oh-my-harness-clean-package-'));
+  t.after(() => rm(cleanRoot, { recursive: true, force: true }));
+  await preparePackage({ packRoot: cleanRoot, sourceRoot: ROOT, version: '0.1.0' });
+  await cleanupPackage({ packRoot: cleanRoot, version: '0.1.0' });
+  assert.equal(await readFile(path.join(cleanRoot, 'dist/.oh-my-harness/bundle-inventory.json')).catch(() => null), null);
+
+  const protectedRoot = await mkdtemp(path.join(os.tmpdir(), 'oh-my-harness-protected-package-'));
+  t.after(() => rm(protectedRoot, { recursive: true, force: true }));
+  await preparePackage({ packRoot: protectedRoot, sourceRoot: ROOT, version: '0.1.0' });
+  await writeFile(path.join(protectedRoot, 'dist/unowned-output.txt'), 'must remain\n');
+  await assert.rejects(cleanupPackage({ packRoot: protectedRoot, version: '0.1.0' }), /ownership/);
+  assert.equal((await readFile(path.join(protectedRoot, 'dist/unowned-output.txt'))).toString(), 'must remain\n');
 });
 
 test('special unrelated Git objects are observed and stop within the bounded Git discovery surface', async (t) => {

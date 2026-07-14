@@ -1,10 +1,10 @@
 export const SCENARIO_MATRIX = [
   {
-    id: 'AS-01', acs: ['T4-AC2', 'T4-AC3', 'T4-AC6', 'T4-AC8'],
-    setup: 'An empty isolated repository and the locally built scoped 0.1.0 release.',
-    expectedDecision: 'READY then success with the fixed payload, one managed block, six profiles, verified state, and no sentinel.',
-    primaryEvidence: 'Exact release-file bytes, marker scan, six inventory agent paths, installer identity, and verified install-state assertions.',
-    failureSignals: 'Missing payload, wrong package/binary identity, profile count other than six, non-verified state, or retained operation sentinel.',
+    id: 'AS-01', acs: ['T4-AC2', 'T4-AC3', 'T4-AC6', 'T4-AC8', 'T4R-AC1'],
+    setup: 'A fresh isolated target receives literal git init and proves unborn symbolic HEAD, absent index and branch ref, no commit, and zero tracked files before using the locally built scoped 0.1.0 release.',
+    expectedDecision: 'READY then success with the fixed payload, one managed block, six profiles, verified state, no sentinel, and byte-identical .git metadata.',
+    primaryEvidence: 'Git symbolic-ref/rev-parse/ls-files assertions and pre/post .git tree hashes accompany exact release bytes, marker scan, six profiles, installer identity, and verified state.',
+    failureSignals: 'IO_UNAVAILABLE, dirty-overlap bypass, Git metadata mutation, a commit/index/tracked file, missing payload, wrong scoped identity, wrong profile count, or retained sentinel.',
   },
   {
     id: 'AS-02', acs: ['T4-AC2', 'T4-AC3'],
