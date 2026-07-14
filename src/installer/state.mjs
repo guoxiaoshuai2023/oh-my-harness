@@ -142,6 +142,18 @@ export function releaseOwnedFiles(inventory, inventoryBytes = canonicalBytes(inv
   return files.sort((left, right) => byteCompare(left.path, right.path));
 }
 
+export function managedDirectoryCandidates(ownedFiles) {
+  const directories = new Set();
+  for (const item of ownedFiles) {
+    const parts = item.path.split('/').slice(0, -1);
+    while (parts.length > 0) {
+      directories.add(parts.join('/'));
+      parts.pop();
+    }
+  }
+  return [...directories].sort(byteCompare);
+}
+
 export function reconcileInstallStateInventory(state, inventory, inventoryBytes) {
   const released = releaseOwnedFiles(inventory, inventoryBytes);
   const ownershipMatches = state.ownedFiles.length === released.length
@@ -162,7 +174,7 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
   if (!canonicalBytes(state).equals(Buffer.from(bytes))) conflict('install state is not canonical', STATE_PATH);
   assertExactKeys(state, [
     'schemaVersion', 'installedVersion', 'bundleVersion', 'installer', 'target', 'operation',
-    'ownedFiles', 'agents', 'agentsMd', 'verification', 'backups',
+    'ownedFiles', 'managedDirectories', 'agents', 'agentsMd', 'verification', 'backups',
   ], 'install state');
   if (state.schemaVersion !== 1) conflict('install state schema is incompatible', STATE_PATH, 'INCOMPATIBLE_INSTALLATION');
   assertVersion(state.installedVersion, 'installed version');
@@ -183,7 +195,8 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
     conflict('state prior version is invalid', STATE_PATH);
   }
   if (state.operation.priorVersion !== null) assertVersion(state.operation.priorVersion, 'prior version');
-  if (!Array.isArray(state.ownedFiles) || !Array.isArray(state.agents) || !Array.isArray(state.backups)) {
+  if (!Array.isArray(state.ownedFiles) || !Array.isArray(state.managedDirectories)
+      || !Array.isArray(state.agents) || !Array.isArray(state.backups)) {
     conflict('state ownership arrays are invalid', STATE_PATH);
   }
   for (const file of state.ownedFiles) {
@@ -198,6 +211,12 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
   }
   assertSortedUnique(state.ownedFiles, (left, right) => byteCompare(left.path, right.path), 'owned files');
   const ownedByPath = new Map(state.ownedFiles.map((item) => [item.path, item]));
+  const directoryCandidates = new Set(managedDirectoryCandidates(state.ownedFiles));
+  for (const directory of state.managedDirectories) {
+    assertSafeRelativePath(directory, 'managed directory path');
+    if (!directoryCandidates.has(directory)) conflict('state has impossible directory ownership', directory);
+  }
+  assertSortedUnique(state.managedDirectories, byteCompare, 'managed directories');
   for (const agent of state.agents) {
     assertExactKeys(agent, ['path', 'sha256'], 'agent ownership');
     assertSafeRelativePath(agent.path, 'agent path');
@@ -239,7 +258,7 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
 
 export function buildInstallState({
   inventory, inventoryBytes, canonicalRoot, operation, operationId: id, priorVersion, agentsMode,
-  timestamp, verificationTimestamp, backups,
+  timestamp, verificationTimestamp, backups, managedDirectories,
 }) {
   const ownedFiles = releaseOwnedFiles(inventory, inventoryBytes);
   const agents = AGENT_PATHS.map((agentPath) => ({ path: agentPath, sha256: ownedFiles.find((item) => item.path === agentPath).sha256 }));
@@ -254,6 +273,7 @@ export function buildInstallState({
     target: { kind: 'canonical-root-sha256', value: targetIdentity(canonicalRoot) },
     operation: { id, type: operation, timestamp, priorVersion },
     ownedFiles,
+    managedDirectories: [...managedDirectories].sort(byteCompare),
     agents,
     agentsMd: { mode: agentsMode, blockSha256: inventory.managedBlock.sha256 },
     verification: { status: 'verified', timestamp: verificationTimestamp },

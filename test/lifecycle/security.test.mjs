@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -107,6 +108,213 @@ test('traversal, absolute, empty, NUL, symlink, and special parents stop without
   assert.equal(fifo.status, 0);
   const fifoPlan = await createLifecyclePlan({ operation: 'install', target: fifoFixture.target, release });
   assert.equal(fifoPlan.plan.status, 'CONFLICT');
+});
+
+test('mutation-boundary parent swaps stop before any outside write or deletion', async (t) => {
+  await t.test('backup exclusive create', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    await install(fixture.target);
+    const managedPath = '.oh-my-harness/docs/architecture.md';
+    await writeFile(path.join(fixture.target, ...managedPath.split('/')), 'drift requiring backup\n');
+    const next = cloneRelease(release, { version: '0.2.0', replace: { [managedPath]: 'replacement\n' } });
+    const planned = await createLifecyclePlan({ operation: 'update', target: fixture.target, release: next });
+    const backupPath = planned.plan.backups[0].backupPath;
+    const outside = path.join(fixture.parent, 'outside-backups');
+    await mkdir(outside);
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-exclusive' && event.path === backupPath) {
+        const backupRoot = path.join(fixture.target, '.oh-my-harness-backups');
+        rmSync(backupRoot, { recursive: true, force: true });
+        symlinkSync(outside, backupRoot);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release: next }), /symbolic link|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(outside, ...backupPath.split('/').slice(1))).catch(() => null), null);
+  });
+
+  await t.test('sentinel exclusive create', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });
+    const outside = path.join(fixture.parent, 'outside-sentinel');
+    await mkdir(outside);
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-exclusive'
+          && event.path === '.oh-my-harness/.operation-in-progress.tmp') {
+        const namespace = path.join(fixture.target, '.oh-my-harness');
+        rmSync(namespace, { recursive: true, force: true });
+        symlinkSync(outside, namespace);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /symbolic link|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(outside, '.operation-in-progress.tmp')).catch(() => null), null);
+  });
+
+  await t.test('target root swap', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });
+    const original = `${fixture.target}-original`;
+    const outside = path.join(fixture.parent, 'outside-root');
+    await mkdir(outside);
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-exclusive'
+          && event.path === '.oh-my-harness/.operation-in-progress.tmp') {
+        renameSync(fixture.target, original);
+        symlinkSync(outside, fixture.target);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /target root|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(outside, '.oh-my-harness/.operation-in-progress.tmp')).catch(() => null), null);
+  });
+
+  await t.test('state exclusive create', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });
+    const outside = path.join(fixture.parent, 'outside-state');
+    await mkdir(outside);
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-exclusive'
+          && event.path === '.oh-my-harness/.install-state.tmp') {
+        const namespace = path.join(fixture.target, '.oh-my-harness');
+        rmSync(namespace, { recursive: true, force: true });
+        symlinkSync(outside, namespace);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /symbolic link|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(outside, '.install-state.tmp')).catch(() => null), null);
+  });
+
+  await t.test('payload temporary create', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });
+    const payloadPath = '.codex/agents/oh-my-harness-executor.toml';
+    const outside = path.join(fixture.parent, 'outside-payload');
+    await mkdir(outside);
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-temp' && event.detail === payloadPath) {
+        const codex = path.join(fixture.target, '.codex');
+        rmSync(codex, { recursive: true, force: true });
+        symlinkSync(outside, codex);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /symbolic link|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(outside, 'agents/oh-my-harness-executor.toml')).catch(() => null), null);
+  });
+
+  await t.test('payload deletion', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    await install(fixture.target);
+    const payloadPath = '.codex/agents/oh-my-harness-executor.toml';
+    const outside = path.join(fixture.parent, 'outside-delete');
+    await mkdir(path.join(outside, 'agents'), { recursive: true });
+    await writeFile(path.join(outside, 'agents/oh-my-harness-executor.toml'), 'outside canary\n');
+    const planned = await createLifecyclePlan({ operation: 'uninstall', target: fixture.target, release });
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'before-unlink' && event.path === payloadPath) {
+        const codex = path.join(fixture.target, '.codex');
+        rmSync(codex, { recursive: true, force: true });
+        symlinkSync(outside, codex);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /symbolic link|unsafe/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal((await readFile(path.join(outside, 'agents/oh-my-harness-executor.toml'))).toString(), 'outside canary\n');
+  });
+
+  await t.test('payload replacement', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    await install(fixture.target);
+    const managedPath = '.oh-my-harness/docs/architecture.md';
+    const next = cloneRelease(release, { version: '0.2.0', replace: { [managedPath]: 'replacement\n' } });
+    const planned = await createLifecyclePlan({ operation: 'update', target: fixture.target, release: next });
+    const outside = path.join(fixture.parent, 'outside-replace');
+    await mkdir(path.join(outside, 'docs'), { recursive: true });
+    await writeFile(path.join(outside, 'docs/architecture.md'), 'outside canary\n');
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'before-rename' && event.path === managedPath) {
+        const namespace = path.join(fixture.target, '.oh-my-harness');
+        rmSync(namespace, { recursive: true, force: true });
+        symlinkSync(outside, namespace);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release: next }), /symbolic link|unsafe|unavailable/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal((await readFile(path.join(outside, 'docs/architecture.md'))).toString(), 'outside canary\n');
+  });
+
+  await t.test('managed directory removal', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    await install(fixture.target);
+    const planned = await createLifecyclePlan({ operation: 'uninstall', target: fixture.target, release });
+    const outside = path.join(fixture.parent, 'outside-directory-remove');
+    await mkdir(path.join(outside, 'agents'), { recursive: true });
+    await writeFile(path.join(outside, 'agents/canary'), 'outside canary\n');
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'before-rmdir' && event.path === '.codex/agents') {
+        const codex = path.join(fixture.target, '.codex');
+        rmSync(codex, { recursive: true, force: true });
+        symlinkSync(outside, codex);
+        swapped = true;
+      }
+    });
+    let result;
+    try {
+      result = await applyLifecyclePlan({ planned, target: fixture.target, release });
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal((await readFile(path.join(outside, 'agents/canary'))).toString(), 'outside canary\n');
+    assert(result.report.directories.preserved.includes('.codex/agents'));
+    assert(result.report.directories.preserved.includes('.codex'));
+  });
 });
 
 test('state traversal, wrong-target copies, malformed state, and unscoped identity cannot authorize mutation', async (t) => {

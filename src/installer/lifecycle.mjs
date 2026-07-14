@@ -1,16 +1,15 @@
-import { constants as fsConstants } from 'node:fs';
-import { link, lstat, mkdir, open, readFile, rename, rm, unlink } from 'node:fs/promises';
-import path from 'node:path';
 import {
-  byteCompare, canonicalBytes, canonicalTarget, containedPath, ensureContainedParents,
+  byteCompare, canonicalBytes, canonicalTarget, ensureContainedParents,
   exactGitOverlap, fingerprintContained, inspectContained, LifecycleError,
-  payloadTempPath, readContainedFile, removeContainedFile, removeEmptyContainedDirectory,
-  recordFilesystemEventForTests, sha256, writeAtomicContained, writeExclusiveContained,
+  linkContainedFile, payloadTempPath, publishContainedFile, readContainedFile,
+  removeContainedFile, removeEmptyContainedDirectory,
+  sha256, writeAtomicContained, writeExclusiveContained,
 } from './filesystem.mjs';
 import { appendManagedBlock, removeManagedBlock, replaceManagedBlock, scanManagedBlock } from './markers.mjs';
 import {
   AGENT_PATHS, BINARY_NAME, buildInstallState, operationId, PACKAGE_NAME,
-  parseInstallState, reconcileInstallStateInventory, releaseOwnedFiles, SENTINEL_PATH, SENTINEL_TEMP_PATH,
+  managedDirectoryCandidates, parseInstallState, reconcileInstallStateInventory, releaseOwnedFiles,
+  SENTINEL_PATH, SENTINEL_TEMP_PATH,
   sentinelDocument, STATE_PATH, STATE_TEMP_PATH, targetIdentity, validateInventory,
 } from './state.mjs';
 
@@ -386,9 +385,12 @@ async function createSentinel(context, envelope, operation, trigger) {
   const { root, stateBytes, operationId: id, release } = context;
   const namespace = await inspectContained(root, '.oh-my-harness');
   if (operation === 'install' && namespace.type === 'absent') {
-    await mkdir(containedPath(root, '.oh-my-harness'), { mode: 0o755 });
-    recordFilesystemEventForTests('mkdir', '.oh-my-harness');
-    context.namespaceCreated = true;
+    await ensureContainedParents(root, SENTINEL_PATH, {
+      onDirectoryCreated: (directory) => {
+        context.createdDirectories.add(directory);
+        if (directory === '.oh-my-harness') context.namespaceCreated = true;
+      },
+    });
     trigger('sentinel-parent');
   } else if (namespace.type !== 'directory') {
     throw new LifecycleError('owned namespace is unavailable', { safePath: '.oh-my-harness' });
@@ -400,30 +402,21 @@ async function createSentinel(context, envelope, operation, trigger) {
     planSha256: envelope.planSha256,
   });
   const bytes = canonicalBytes(document);
-  let handle;
   try {
     trigger('sentinel-temp-write', SENTINEL_TEMP_PATH);
-    recordFilesystemEventForTests('open-write-exclusive', SENTINEL_TEMP_PATH);
-    handle = await open(containedPath(root, SENTINEL_TEMP_PATH), 'wx', 0o600);
-    await handle.writeFile(bytes);
-    await handle.sync();
-    await handle.close();
-    handle = null;
+    await writeExclusiveContained(root, SENTINEL_TEMP_PATH, bytes, { mode: 0o600 });
     trigger('sentinel-link', SENTINEL_PATH);
-    await link(containedPath(root, SENTINEL_TEMP_PATH), containedPath(root, SENTINEL_PATH));
-    recordFilesystemEventForTests('link', SENTINEL_PATH, SENTINEL_TEMP_PATH);
-    context.sentinelPublished = true;
+    await linkContainedFile(root, SENTINEL_TEMP_PATH, SENTINEL_PATH, {
+      onMutation: () => { context.sentinelPublished = true; },
+    });
     trigger('sentinel-verify', SENTINEL_PATH);
     if (!(await readContainedFile(root, SENTINEL_PATH)).equals(bytes)) throw new Error('sentinel bytes differ');
     trigger('sentinel-temp-cleanup', SENTINEL_TEMP_PATH);
-    await unlink(containedPath(root, SENTINEL_TEMP_PATH));
-    recordFilesystemEventForTests('unlink', SENTINEL_TEMP_PATH);
+    await removeContainedFile(root, SENTINEL_TEMP_PATH);
     if ((await inspectContained(root, SENTINEL_TEMP_PATH)).type !== 'absent') throw new Error('sentinel temp remains');
     return bytes;
   } catch (error) {
     throw error instanceof LifecycleError ? error : new LifecycleError('operation sentinel creation failed', { safePath: SENTINEL_PATH });
-  } finally {
-    await handle?.close().catch(() => {});
   }
 }
 
@@ -450,6 +443,9 @@ async function verifyReleaseSurface(context, expectedAgentsOuter) {
 
 async function verifyStateSurface(root, stateBytes, release) {
   const state = parseInstallState(stateBytes, { canonicalRoot: root });
+  for (const directory of state.managedDirectories) {
+    await inspectContained(root, directory, { allowMissing: false, expect: 'directory' });
+  }
   for (const item of state.ownedFiles) {
     if (sha256(await readContainedFile(root, item.path)) !== item.sha256) {
       throw new LifecycleError('state does not match installed payload', { safePath: item.path });
@@ -471,6 +467,7 @@ async function writeCandidateState(context, operation, backups, trigger, onMutat
     priorVersion: context.state?.installedVersion ?? null,
     agentsMode: context.state?.agentsMd.mode ?? (context.agents.exists ? 'managed-block' : 'created-file'),
     timestamp, verificationTimestamp: timestamp,
+    managedDirectories: context.createdDirectories,
     backups: backups.map((item) => ({
       path: item.backupPath, sourcePath: item.sourcePath, sha256: item.sha256, operationId: context.operationId,
     })),
@@ -479,15 +476,7 @@ async function writeCandidateState(context, operation, backups, trigger, onMutat
   trigger('state-write', STATE_TEMP_PATH);
   const tempInfo = await inspectContained(context.root, STATE_TEMP_PATH);
   if (tempInfo.type !== 'absent') throw new LifecycleError('state temp already exists', { safePath: STATE_TEMP_PATH });
-  let handle;
-  try {
-    recordFilesystemEventForTests('open-write-exclusive', STATE_TEMP_PATH);
-    handle = await open(containedPath(context.root, STATE_TEMP_PATH), 'wx', 0o600);
-    await handle.writeFile(bytes);
-    await handle.sync();
-  } finally {
-    await handle?.close().catch(() => {});
-  }
+  await writeExclusiveContained(context.root, STATE_TEMP_PATH, bytes, { mode: 0o600 });
   trigger('state-verify', STATE_TEMP_PATH);
   const candidate = await readContainedFile(context.root, STATE_TEMP_PATH);
   if (!candidate.equals(bytes)) throw new LifecycleError('candidate state bytes differ', { safePath: STATE_TEMP_PATH });
@@ -497,9 +486,9 @@ async function writeCandidateState(context, operation, backups, trigger, onMutat
   if (context.state ? stateBefore.type !== 'file' : stateBefore.type !== 'absent') {
     throw new LifecycleError('state changed before replacement', { code: 'TARGET_CHANGED', exitCode: 4, safePath: STATE_PATH });
   }
-  await rename(containedPath(context.root, STATE_TEMP_PATH), containedPath(context.root, STATE_PATH));
-  onMutation();
-  recordFilesystemEventForTests('rename', STATE_PATH, STATE_TEMP_PATH);
+  await publishContainedFile(context.root, STATE_TEMP_PATH, STATE_PATH, {
+    replace: context.state !== null, before: stateBefore, onMutation,
+  });
   const canonicalState = await readContainedFile(context.root, STATE_PATH);
   if (!canonicalState.equals(bytes)) throw new LifecycleError('canonical state replacement did not verify', { safePath: STATE_PATH });
   await verifyStateSurface(context.root, canonicalState, context.release);
@@ -537,7 +526,7 @@ async function recheckPlan(original, target, release) {
   return fresh;
 }
 
-function resultReport(plan, changed, temporary, sentinel, state, backups, error = null) {
+function resultReport(plan, changed, temporary, sentinel, state, backups, directories, error = null) {
   const changedSet = new Set(changed);
   const planned = uniqueSorted([...plan.creates, ...plan.replaces, ...plan.removes, ...(plan.blockAction !== 'none' ? ['AGENTS.md'] : [])]);
   return {
@@ -547,6 +536,10 @@ function resultReport(plan, changed, temporary, sentinel, state, backups, error 
     unchanged: planned.filter((item) => !changedSet.has(item)),
     temporary: uniqueSorted(temporary), sentinel, state,
     backups: backups.map((item) => item.backupPath).sort(byteCompare),
+    directories: {
+      removed: uniqueSorted(directories.removed),
+      preserved: uniqueSorted(directories.preserved),
+    },
     error: error ? { path: error.safePath ?? null, reason: error.message } : null,
   };
 }
@@ -559,10 +552,13 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
   const changed = [];
   const temporary = [];
   const createdBackups = [];
+  const directories = { removed: [], preserved: [] };
   let sentinelBytes = null;
   let oldStateDeleted = false;
   let committed = false;
   context.expectedOuter = { prefix: context.agents.scan.prefix, suffix: context.agents.scan.suffix };
+  context.createdDirectories = new Set(context.state?.managedDirectories ?? []);
+  const recordCreatedDirectory = (directory) => context.createdDirectories.add(directory);
 
   try {
     sentinelBytes = await createSentinel(context, envelope, plan.operation, trigger);
@@ -581,12 +577,14 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
         trigger(`payload-write:${relativePath}`, relativePath);
         await writeAtomicContained(context.root, relativePath, release.files.get(relativePath), {
           replace: false, onMutation: () => changed.push(relativePath),
+          onDirectoryCreated: recordCreatedDirectory,
         });
       }
       for (const relativePath of plan.replaces) {
         trigger(`payload-write:${relativePath}`, relativePath);
         await writeAtomicContained(context.root, relativePath, release.files.get(relativePath), {
           replace: true, onMutation: () => changed.push(relativePath),
+          onDirectoryCreated: recordCreatedDirectory,
         });
       }
       for (const relativePath of plan.removes) {
@@ -652,14 +650,21 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
     if ((await inspectContained(context.root, SENTINEL_PATH)).type !== 'absent') throw new LifecycleError('sentinel deletion did not verify', { safePath: SENTINEL_PATH });
     committed = true;
     if (plan.operation === 'uninstall') {
-      const parents = uniqueSorted(context.state.ownedFiles
-        .map((item) => path.posix.dirname(item.path))
-        .filter((item) => item.startsWith('.oh-my-harness')),
-      ).sort((left, right) => right.split('/').length - left.split('/').length || byteCompare(right, left));
-      for (const directory of parents) await removeEmptyContainedDirectory(context.root, directory);
-      await removeEmptyContainedDirectory(context.root, '.oh-my-harness');
+      const recorded = new Set(context.state.managedDirectories);
+      const candidates = managedDirectoryCandidates(context.state.ownedFiles)
+        .sort((left, right) => right.split('/').length - left.split('/').length || byteCompare(right, left));
+      for (const directory of candidates) {
+        if (!recorded.has(directory)) {
+          const info = await inspectContained(context.root, directory).catch(() => ({ type: 'unsafe' }));
+          if (info.type !== 'absent') directories.preserved.push(directory);
+          continue;
+        }
+        const outcome = await removeEmptyContainedDirectory(context.root, directory).catch(() => 'preserved');
+        if (outcome === 'removed') directories.removed.push(directory);
+        else if (outcome === 'preserved') directories.preserved.push(directory);
+      }
     }
-    return { exitCode: 0, report: resultReport(plan, changed, temporary, 'absent', plan.operation === 'uninstall' ? 'absent' : 'verified', createdBackups) };
+    return { exitCode: 0, report: resultReport(plan, changed, temporary, 'absent', plan.operation === 'uninstall' ? 'absent' : 'verified', createdBackups, directories) };
   } catch (error) {
     const failure = error instanceof LifecycleError ? error : new LifecycleError('lifecycle write or verification failed');
     try {
@@ -689,7 +694,7 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
     if (sentinelState === 'present') changed.push(SENTINEL_PATH);
     const stateState = (await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'absent' }))).type === 'file'
       ? (plan.operation === 'update' || plan.operation === 'uninstall' ? 'prior-preserved' : 'present') : 'absent';
-    failure.report = resultReport(plan, changed, temporary, sentinelState, stateState, createdBackups, failure);
+    failure.report = resultReport(plan, changed, temporary, sentinelState, stateState, createdBackups, directories, failure);
     throw failure;
   }
 }

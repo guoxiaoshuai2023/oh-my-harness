@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile,
+  lstat, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile,
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -353,6 +353,12 @@ test('AS-09 safe uninstall preserves target content/backups, deletes state last,
   for (const relativePath of release.files.keys()) {
     assert.equal(await readFile(path.join(target, ...relativePath.split('/'))).catch(() => null), null);
   }
+  assert.equal(await readFile(path.join(target, '.codex')).catch(() => null), null);
+  assert.equal(await readFile(path.join(target, '.oh-my-harness')).catch(() => null), null);
+  assert(result.report.directories.removed.includes('.codex/agents'));
+  assert(result.report.directories.removed.includes('.codex'));
+  assert(result.report.directories.removed.includes('.oh-my-harness'));
+  assert.deepEqual(result.report.directories.preserved, []);
   const stateDelete = events.findIndex((event) => event.operation === 'unlink' && event.path === STATE_PATH);
   assert(stateDelete > 0);
   for (const relativePath of planned.plan.removes) {
@@ -371,6 +377,22 @@ test('AS-09 safe uninstall preserves target content/backups, deletes state last,
   assert(await readFile(path.join(failed.target, ...STATE_PATH.split('/'))));
   const followUp = await createLifecyclePlan({ operation: 'uninstall', target: failed.target, release });
   assert.equal(followUp.plan.status, 'INCOMPLETE_OR_UNOWNED');
+
+  const preExisting = await targetFixture(t);
+  await mkdir(path.join(preExisting.target, '.codex/agents'), { recursive: true });
+  await applyReady('install', preExisting.target, release);
+  const preExistingResult = await applyReady('uninstall', preExisting.target, release);
+  assert(preExistingResult.report.directories.preserved.includes('.codex/agents'));
+  assert(preExistingResult.report.directories.preserved.includes('.codex'));
+  assert.equal((await lstat(path.join(preExisting.target, '.codex/agents'))).isDirectory(), true);
+
+  const populated = await targetFixture(t);
+  await applyReady('install', populated.target, release);
+  await writeFile(path.join(populated.target, '.codex/agents/target-owned.toml'), 'target owned\n');
+  const populatedResult = await applyReady('uninstall', populated.target, release);
+  assert.equal((await readFile(path.join(populated.target, '.codex/agents/target-owned.toml'))).toString(), 'target owned\n');
+  assert(populatedResult.report.directories.preserved.includes('.codex/agents'));
+  assert(populatedResult.report.directories.preserved.includes('.codex'));
 });
 
 test('AS-10 one changed outer byte defeats otherwise passing structural checks', async (t) => {

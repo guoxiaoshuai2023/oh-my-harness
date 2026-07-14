@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { applyLifecyclePlan, createLifecyclePlan } from '../../src/installer/lifecycle.mjs';
@@ -54,6 +54,9 @@ test('install materializes the complete fixed bundle, preserves binary outer byt
   assert.equal(state.installedVersion, '0.1.0');
   assert.equal(state.ownedFiles.length, release.files.size);
   assert.deepEqual(state.agents.map((item) => item.path), release.inventory.ownership.agentPaths);
+  assert(state.managedDirectories.includes('.oh-my-harness'));
+  assert(state.managedDirectories.includes('.codex'));
+  assert(state.managedDirectories.includes('.codex/agents'));
   assert.equal(state.installer.packageName, '@guoxiaoshuai2023/oh-my-harness');
   assert.equal(state.installer.binaryName, 'oh-my-harness');
   assert.equal(await readFile(path.join(target, '.oh-my-harness/.operation-in-progress.json')).catch(() => null), null);
@@ -169,6 +172,43 @@ test('uninstall backs up drift, preserves outer bytes and backup residue, and de
   for (const relativePath of release.files.keys()) {
     assert.equal(await readFile(path.join(target, ...relativePath.split('/'))).catch(() => null), null);
   }
+});
+
+test('uninstall removes only recorded empty managed directories and reports preserved residue', async (t) => {
+  await t.test('fresh install removes Harness-created parents', async (subtest) => {
+    const { target } = await targetFixture(subtest);
+    await apply('install', target);
+    const result = await apply('uninstall', target);
+    assert.equal(await readFile(path.join(target, '.codex')).catch(() => null), null);
+    assert.equal(await readFile(path.join(target, '.oh-my-harness')).catch(() => null), null);
+    assert(result.report.directories.removed.includes('.codex/agents'));
+    assert(result.report.directories.removed.includes('.codex'));
+    assert(result.report.directories.removed.includes('.oh-my-harness'));
+    assert.deepEqual(result.report.directories.preserved, []);
+  });
+
+  await t.test('pre-existing parents remain and are reported', async (subtest) => {
+    const { target } = await targetFixture(subtest);
+    await mkdir(path.join(target, '.codex/agents'), { recursive: true });
+    await apply('install', target);
+    const state = await readJson(target, STATE_PATH);
+    assert(!state.managedDirectories.includes('.codex'));
+    assert(!state.managedDirectories.includes('.codex/agents'));
+    const result = await apply('uninstall', target);
+    assert.equal((await lstat(path.join(target, '.codex/agents'))).isDirectory(), true);
+    assert(result.report.directories.preserved.includes('.codex/agents'));
+    assert(result.report.directories.preserved.includes('.codex'));
+  });
+
+  await t.test('non-empty created parents remain and are reported', async (subtest) => {
+    const { target } = await targetFixture(subtest);
+    await apply('install', target);
+    await writeFile(path.join(target, '.codex/agents/target-owned.toml'), 'target owned\n');
+    const result = await apply('uninstall', target);
+    assert.equal((await readFile(path.join(target, '.codex/agents/target-owned.toml'))).toString(), 'target owned\n');
+    assert(result.report.directories.preserved.includes('.codex/agents'));
+    assert(result.report.directories.preserved.includes('.codex'));
+  });
 });
 
 test('a pre-existing empty AGENTS.md remains target-owned after install and uninstall', async (t) => {

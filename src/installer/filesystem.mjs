@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import {
-  access, chmod, copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath,
+  access, copyFile, link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath,
   rename, rm, rmdir, unlink, writeFile,
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -102,6 +102,14 @@ export async function canonicalTarget(targetArgument) {
 }
 
 export async function inspectContained(root, relativePath, { allowMissing = true, expect = null } = {}) {
+  try {
+    const rootInfo = await lstat(root);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error('unsafe target root');
+  } catch {
+    throw new LifecycleError('canonical target root changed or became unsafe', {
+      code: 'UNSAFE_PATH', exitCode: 4, safePath: relativePath,
+    });
+  }
   const absolute = containedPath(root, relativePath);
   const parts = relativePath.split('/');
   let current = root;
@@ -166,7 +174,7 @@ export async function fingerprintContained(root, relativePath) {
   return `${inspected.type}:${inspected.mode.toString(8)}`;
 }
 
-export async function ensureContainedParents(root, relativePath) {
+export async function ensureContainedParents(root, relativePath, { onDirectoryCreated = null } = {}) {
   assertSafeRelativePath(relativePath);
   const parts = relativePath.split('/').slice(0, -1);
   let currentRelative = '';
@@ -176,11 +184,22 @@ export async function ensureContainedParents(root, relativePath) {
     if (inspected.type === 'absent') {
       try {
         observe('mkdir', currentRelative);
+        const rechecked = await inspectContained(root, currentRelative);
+        if (rechecked.type !== 'absent') {
+          throw new LifecycleError('parent directory changed before creation', {
+            code: 'TARGET_CHANGED', exitCode: 4, safePath: currentRelative,
+          });
+        }
         await mkdir(containedPath(root, currentRelative), { mode: 0o755 });
+        onDirectoryCreated?.(currentRelative);
       } catch (error) {
+        if (error instanceof LifecycleError) throw error;
         if (error.code !== 'EEXIST') {
           throw new LifecycleError('parent directory could not be created', { safePath: currentRelative });
         }
+        throw new LifecycleError('parent directory changed before creation', {
+          code: 'TARGET_CHANGED', exitCode: 4, safePath: currentRelative,
+        });
       }
       await inspectContained(root, currentRelative, { allowMissing: false, expect: 'directory' });
     } else if (inspected.type !== 'directory') {
@@ -199,9 +218,10 @@ export function payloadTempPath(relativePath) {
 
 export async function writeAtomicContained(root, relativePath, bytes, {
   replace = false, mode = 0o644, exactTemp = null, onMutation = null,
+  onDirectoryCreated = null,
 } = {}) {
   assertSafeRelativePath(relativePath);
-  await ensureContainedParents(root, relativePath);
+  await ensureContainedParents(root, relativePath, { onDirectoryCreated });
   const before = await inspectContained(root, relativePath);
   if ((!replace && before.type !== 'absent') || (replace && before.type !== 'file')) {
     throw new LifecycleError('destination changed before write', {
@@ -219,22 +239,21 @@ export async function writeAtomicContained(root, relativePath, bytes, {
   const tempAbsolute = containedPath(root, tempRelative);
   let handle;
   try {
-    observe('open-write-temp', tempRelative);
-    handle = await open(tempAbsolute, 'wx', mode);
-    await handle.writeFile(bytes);
-    await handle.sync();
-    await handle.close();
-    handle = null;
-    await chmod(tempAbsolute, replace ? before.mode : mode);
-    const rechecked = await inspectContained(root, relativePath);
-    if (rechecked.type !== before.type || (replace && rechecked.mode !== before.mode)) {
-      throw new LifecycleError('destination changed before atomic replacement', {
-        code: 'TARGET_CHANGED', exitCode: 4, safePath: relativePath,
+    observe('open-write-temp', tempRelative, relativePath);
+    const tempRechecked = await inspectContained(root, tempRelative);
+    if (tempRechecked.type !== 'absent') {
+      throw new LifecycleError('temporary path changed before creation', {
+        code: 'TARGET_CHANGED', exitCode: 4, safePath: tempRelative,
       });
     }
-    await rename(tempAbsolute, containedPath(root, relativePath));
-    onMutation?.();
-    observe('rename', relativePath, tempRelative);
+    handle = await open(tempAbsolute,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0), mode);
+    await handle.writeFile(bytes);
+    await handle.sync();
+    await handle.chmod(replace ? before.mode : mode);
+    await handle.close();
+    handle = null;
+    await publishContainedFile(root, tempRelative, relativePath, { replace, before, onMutation });
     const actual = await readContainedFile(root, relativePath);
     if (!actual.equals(Buffer.from(bytes))) throw new Error('written bytes did not verify');
   } catch (error) {
@@ -242,12 +261,17 @@ export async function writeAtomicContained(root, relativePath, bytes, {
     throw new LifecycleError('file write or verification failed', { safePath: relativePath });
   } finally {
     await handle?.close().catch(() => {});
-    await unlink(tempAbsolute).then(() => observe('unlink-temp', tempRelative)).catch(() => {});
+    const remaining = await inspectContained(root, tempRelative).catch(() => ({ type: 'absent' }));
+    if (remaining.type === 'file') {
+      await removeContainedFile(root, tempRelative).then(() => observe('unlink-temp', tempRelative)).catch(() => {});
+    }
   }
 }
 
-export async function writeExclusiveContained(root, relativePath, bytes, { mode = 0o644 } = {}) {
-  await ensureContainedParents(root, relativePath);
+export async function writeExclusiveContained(root, relativePath, bytes, {
+  mode = 0o644, onDirectoryCreated = null,
+} = {}) {
+  await ensureContainedParents(root, relativePath, { onDirectoryCreated });
   const inspected = await inspectContained(root, relativePath);
   if (inspected.type !== 'absent') {
     if (inspected.type === 'file' && (await readContainedFile(root, relativePath)).equals(Buffer.from(bytes))) return 'reused';
@@ -259,10 +283,18 @@ export async function writeExclusiveContained(root, relativePath, bytes, { mode 
   let handle;
   try {
     observe('open-write-exclusive', relativePath);
-    handle = await open(absolute, 'wx', mode);
+    const rechecked = await inspectContained(root, relativePath);
+    if (rechecked.type !== 'absent') {
+      throw new LifecycleError('exclusive destination changed before creation', {
+        code: 'TARGET_CHANGED', exitCode: 4, safePath: relativePath,
+      });
+    }
+    handle = await open(absolute,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0), mode);
     await handle.writeFile(bytes);
     await handle.sync();
   } catch (error) {
+    if (error instanceof LifecycleError) throw error;
     throw new LifecycleError('exclusive file creation failed', { safePath: relativePath });
   } finally {
     await handle?.close().catch(() => {});
@@ -273,10 +305,67 @@ export async function writeExclusiveContained(root, relativePath, bytes, { mode 
   return 'created';
 }
 
-export async function removeContainedFile(root, relativePath, { onMutation = null } = {}) {
-  const inspected = await inspectContained(root, relativePath, { allowMissing: false, expect: 'file' });
+export async function linkContainedFile(root, sourcePath, destinationPath, { onMutation = null } = {}) {
+  const source = await inspectContained(root, sourcePath, { allowMissing: false, expect: 'file' });
+  const destination = await inspectContained(root, destinationPath);
+  if (destination.type !== 'absent') {
+    throw new LifecycleError('link destination changed before publication', {
+      code: 'TARGET_CHANGED', exitCode: 4, safePath: destinationPath,
+    });
+  }
+  observe('before-link', destinationPath, sourcePath);
+  const sourceRechecked = await inspectContained(root, sourcePath, { allowMissing: false, expect: 'file' });
+  const destinationRechecked = await inspectContained(root, destinationPath);
+  if (destinationRechecked.type !== 'absent') {
+    throw new LifecycleError('link destination changed before publication', {
+      code: 'TARGET_CHANGED', exitCode: 4, safePath: destinationPath,
+    });
+  }
   try {
-    await unlink(inspected.absolute);
+    await link(sourceRechecked.absolute, destinationRechecked.absolute);
+  } catch {
+    throw new LifecycleError('exclusive file publication failed', {
+      code: 'TARGET_CHANGED', exitCode: 4, safePath: destinationPath,
+    });
+  }
+  onMutation?.();
+  observe('link', destinationPath, sourcePath);
+  return source;
+}
+
+export async function publishContainedFile(root, sourcePath, destinationPath, {
+  replace = false, before = null, onMutation = null,
+} = {}) {
+  observe('before-rename', destinationPath, sourcePath);
+  const source = await inspectContained(root, sourcePath, { allowMissing: false, expect: 'file' });
+  const destination = await inspectContained(root, destinationPath);
+  const expected = before ?? destination;
+  if (destination.type !== expected.type || (replace && destination.mode !== expected.mode)
+      || (replace ? destination.type !== 'file' : destination.type !== 'absent')) {
+    throw new LifecycleError('destination changed before atomic replacement', {
+      code: 'TARGET_CHANGED', exitCode: 4, safePath: destinationPath,
+    });
+  }
+  if (replace) {
+    try {
+      await rename(source.absolute, destination.absolute);
+    } catch {
+      throw new LifecycleError('atomic replacement failed', { safePath: destinationPath });
+    }
+    onMutation?.();
+  } else {
+    await linkContainedFile(root, sourcePath, destinationPath, { onMutation });
+    await removeContainedFile(root, sourcePath);
+  }
+  observe('rename', destinationPath, sourcePath);
+}
+
+export async function removeContainedFile(root, relativePath, { onMutation = null } = {}) {
+  await inspectContained(root, relativePath, { allowMissing: false, expect: 'file' });
+  observe('before-unlink', relativePath);
+  const rechecked = await inspectContained(root, relativePath, { allowMissing: false, expect: 'file' });
+  try {
+    await unlink(rechecked.absolute);
   } catch {
     throw new LifecycleError('file deletion failed', { safePath: relativePath });
   }
@@ -288,12 +377,20 @@ export async function removeContainedFile(root, relativePath, { onMutation = nul
 }
 
 export async function removeEmptyContainedDirectory(root, relativePath) {
+  const inspected = await inspectContained(root, relativePath);
+  if (inspected.type === 'absent') return 'absent';
+  if (inspected.type !== 'directory') return 'preserved';
+  observe('before-rmdir', relativePath);
+  const rechecked = await inspectContained(root, relativePath, { allowMissing: false, expect: 'directory' });
   try {
-    const inspected = await inspectContained(root, relativePath);
-    if (inspected.type === 'directory') await rmdir(inspected.absolute);
+    await rmdir(rechecked.absolute);
   } catch (error) {
-    if (!['ENOENT', 'ENOTEMPTY'].includes(error.code)) throw error;
+    if (error.code === 'ENOENT') return 'absent';
+    if (error.code === 'ENOTEMPTY') return 'preserved';
+    throw new LifecycleError('directory removal failed', { safePath: relativePath });
   }
+  observe('rmdir', relativePath);
+  return 'removed';
 }
 
 async function validateObjectTree(root, relativeDirectory) {

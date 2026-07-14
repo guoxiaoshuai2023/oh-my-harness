@@ -57,10 +57,10 @@ export const SCENARIO_MATRIX = [
   },
   {
     id: 'AS-09', acs: ['T4-AC2', 'T4-AC3'],
-    setup: 'Installed target with target-owned content and drift requiring backup, plus an injected final state-delete failure fixture.',
-    expectedDecision: 'Successful uninstall removes only state-owned payload/block, preserves target content/backups, and removes state last; injected final delete reports failure.',
-    primaryEvidence: 'Ordered mutation events, exact preserved bytes, state/payload absence, backup survival, and non-success failure report.',
-    failureSignals: 'Target-content loss, backup loss, early state deletion, retained successful state, or false success on injected failure.',
+    setup: 'Installed targets covering Harness-created parents, pre-existing parents, target-populated parents, target-owned content and drift requiring backup, plus an injected final state-delete failure fixture.',
+    expectedDecision: 'Successful uninstall removes only state-owned payload/block and recorded empty Harness-created parents, preserves and reports pre-existing/non-empty parents and target content/backups, and removes state last; injected final delete reports failure.',
+    primaryEvidence: 'Recorded directory ownership, removed/preserved directory report fields, ordered mutation events, exact preserved bytes, state/payload absence, backup survival, and non-success failure report.',
+    failureSignals: 'Target-content or backup loss, retained empty Harness-created parents, removed pre-existing/non-empty parents, unreported residue, early state deletion, retained successful state, or false success on injected failure.',
   },
   {
     id: 'AS-10', acs: ['T4-AC2', 'T4-AC4', 'T4-AC7'],
