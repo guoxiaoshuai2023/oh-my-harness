@@ -16,7 +16,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - proving that governance rules were moved, not weakened,
 - validating behavior with evidence instead of vague confidence.
 
-`oh-my-harness` turns those concerns into a practical repo structure that any project can copy, adapt, and enforce.
+`oh-my-harness` turns those concerns into a practical repo structure that a project can install, adapt, and enforce.
 
 ## What You Get
 
@@ -27,6 +27,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
 - **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
+- **A non-destructive package lifecycle** for installing, updating, and uninstalling the exact managed surface without adopting files by name.
 - **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks, checking rule-preservation traceability, and running router fixture smoke/coverage checks.
 - **Adoption docs** for migrating an existing project into the harness safely.
 
@@ -46,24 +47,33 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
 | `scripts/` | Standard-library Python helpers for snapshot extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
-| `docs/adoption/` | Migration runbook and open-source release checklist. |
+| `docs/adoption/` | Migration guidance and release checks. The universal adoption runbook and bundle lifecycle spec are release-repository-only; they are not installed payload. |
 
 ## Quick Start
 
-Copy the harness into a target repo:
+The lifecycle CLI requires Node `>=24 <25` and uses only the Node standard library. Choose an exact package version, then preview and install:
 
 ```sh
-TARGET=/path/to/target-repo
-mkdir -p "$TARGET/docs" "$TARGET/task-docs" "$TARGET/scripts"
-cp AGENTS.md "$TARGET/"
-cp -R .codex "$TARGET/"
-cp -R docs/agent-routing "$TARGET/docs/"
-cp -R task-docs/_harness "$TARGET/task-docs/"
-cp scripts/extract_agents_source.py \
-  scripts/validate_rule_preservation.py \
-  scripts/validate_router_fixture.py \
-  "$TARGET/scripts/"
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo> --dry-run
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo>
 ```
+
+Use the target release for an update and an installer version compatible with the installed state for uninstall:
+
+```sh
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<target-version> oh-my-harness update --target <repo>
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-harness uninstall --target <repo>
+```
+
+For local acceptance of a packed archive, use the same binary and lifecycle:
+
+```sh
+npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <repo>
+```
+
+Each mutating command prints its exact plan before applying it. In a TTY it asks once for confirmation; automation must add `--yes` after inspecting the plan. Manual copying, `npx oh-my-harness`, and `--package=oh-my-harness` are not valid managed installation paths.
+
+The package always installs three required Python 3.11 helpers: `extract_agents_source.py`, `validate_router_fixture.py`, and `validate_rule_preservation.py`. Python is used only when running those helpers; install, update, and uninstall do not require Python.
 
 Before shrinking an existing `AGENTS.md`, create source traceability artifacts:
 
@@ -93,6 +103,8 @@ python3 scripts/validate_router_fixture.py \
 ```
 
 This helper checks trigger text, route paths, and optional ledger Rule ID mentions. It is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
+
+For adoption details, use the [router refactor runbook](docs/adoption/router-refactor-runbook.md) and the [open-source release checklist](docs/adoption/open-source-release-checklist.md). Repository maintainers also have the release-only `universal-harness-adoption-runbook.md` and `bundle-lifecycle-spec.md` in the adoption-docs directory; those two files explain the package lifecycle but are intentionally outside the installed bundle.
 
 ## How It Works
 
@@ -131,8 +143,8 @@ Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex co
 
 ## Not A Framework Lock-In
 
-This repo does not require a specific agent vendor, IDE, CI system, task runner, or programming language. The harness is mostly Markdown plus a few small Python scripts. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
+This repo does not require a specific agent vendor, IDE, CI system, or task runner. The managed lifecycle is a Node standard-library CLI, while the installed harness is mostly Markdown plus three Python 3.11 validation helpers. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
 
 ## Open Source Status
 
-This repo is structured for open-source publication, but no license has been selected yet. License selection is a release-blocking owner decision before publishing. See `docs/adoption/open-source-release-checklist.md`.
+This repo is structured for open-source publication, but local archive acceptance is not a public release, npm scope proof, signing, or publication authorization. No license has been selected yet. License selection, scope ownership/access, credentials, signing, publication, and release creation remain later owner-controlled work. See `docs/adoption/open-source-release-checklist.md`.
