@@ -187,6 +187,29 @@ test('mutation-boundary parent swaps stop before any outside write or deletion',
     assert.equal(await readFile(path.join(outside, '.oh-my-harness/.operation-in-progress.tmp')).catch(() => null), null);
   });
 
+  await t.test('target root regular-directory replacement', async (subtest) => {
+    const fixture = await targetFixture(subtest);
+    const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });
+    const original = `${fixture.target}-original-directory`;
+    let swapped = false;
+    const restore = setFilesystemObserverForTests((event) => {
+      if (!swapped && event.operation === 'open-write-exclusive'
+          && event.path === '.oh-my-harness/.operation-in-progress.tmp') {
+        renameSync(fixture.target, original);
+        mkdirSync(fixture.target);
+        swapped = true;
+      }
+    });
+    try {
+      await assert.rejects(applyLifecyclePlan({ planned, target: fixture.target, release }), /root identity|target root|changed/i);
+    } finally {
+      restore();
+    }
+    assert.equal(swapped, true);
+    assert.equal(await readFile(path.join(fixture.target, '.oh-my-harness/install-state.json')).catch(() => null), null);
+    assert.equal(await readFile(path.join(fixture.target, '.oh-my-harness/.operation-in-progress.tmp')).catch(() => null), null);
+  });
+
   await t.test('state exclusive create', async (subtest) => {
     const fixture = await targetFixture(subtest);
     const planned = await createLifecyclePlan({ operation: 'install', target: fixture.target, release });

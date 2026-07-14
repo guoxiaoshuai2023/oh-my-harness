@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 let observer = null;
+const pinnedRoots = new Map();
 
 export function setFilesystemObserverForTests(nextObserver) {
   const previous = observer;
@@ -101,10 +102,42 @@ export async function canonicalTarget(targetArgument) {
   return root;
 }
 
+function rootIdentity(info) {
+  return `${info.dev}:${info.ino}`;
+}
+
+export async function containedRootIdentity(root) {
+  try {
+    const info = await lstat(root);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('unsafe target root');
+    return rootIdentity(info);
+  } catch {
+    throw new LifecycleError('canonical target root changed or became unsafe', {
+      code: 'UNSAFE_PATH', exitCode: 4,
+    });
+  }
+}
+
+export async function pinContainedRoot(root, expectedIdentity) {
+  const actual = await containedRootIdentity(root);
+  if (actual !== expectedIdentity || pinnedRoots.has(root)) {
+    throw new LifecycleError('canonical target root identity changed before apply', {
+      code: 'TARGET_CHANGED', exitCode: 4,
+    });
+  }
+  pinnedRoots.set(root, expectedIdentity);
+  return () => {
+    if (pinnedRoots.get(root) === expectedIdentity) pinnedRoots.delete(root);
+  };
+}
+
 export async function inspectContained(root, relativePath, { allowMissing = true, expect = null } = {}) {
   try {
     const rootInfo = await lstat(root);
-    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error('unsafe target root');
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()
+        || (pinnedRoots.has(root) && rootIdentity(rootInfo) !== pinnedRoots.get(root))) {
+      throw new Error('unsafe target root');
+    }
   } catch {
     throw new LifecycleError('canonical target root changed or became unsafe', {
       code: 'UNSAFE_PATH', exitCode: 4, safePath: relativePath,
@@ -269,7 +302,7 @@ export async function writeAtomicContained(root, relativePath, bytes, {
 }
 
 export async function writeExclusiveContained(root, relativePath, bytes, {
-  mode = 0o644, onDirectoryCreated = null,
+  mode = 0o644, onDirectoryCreated = null, onMutation = null,
 } = {}) {
   await ensureContainedParents(root, relativePath, { onDirectoryCreated });
   const inspected = await inspectContained(root, relativePath);
@@ -291,6 +324,7 @@ export async function writeExclusiveContained(root, relativePath, bytes, {
     }
     handle = await open(absolute,
       fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0), mode);
+    onMutation?.();
     await handle.writeFile(bytes);
     await handle.sync();
   } catch (error) {

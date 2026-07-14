@@ -1,7 +1,7 @@
 import {
-  byteCompare, canonicalBytes, canonicalTarget, ensureContainedParents,
+  byteCompare, canonicalBytes, canonicalTarget, containedRootIdentity, ensureContainedParents,
   exactGitOverlap, fingerprintContained, inspectContained, LifecycleError,
-  linkContainedFile, payloadTempPath, publishContainedFile, readContainedFile,
+  linkContainedFile, payloadTempPath, pinContainedRoot, publishContainedFile, readContainedFile,
   removeContainedFile, removeEmptyContainedDirectory,
   sha256, writeAtomicContained, writeExclusiveContained,
 } from './filesystem.mjs';
@@ -357,6 +357,7 @@ export async function createLifecyclePlan({ operation, target, release }) {
   const envelope = planEnvelope(plan);
   const paths = planPaths(plan, state, release);
   const fingerprints = await captureFingerprints(root, paths);
+  const rootIdentity = await containedRootIdentity(root);
   const modifiedBytes = new Map();
   for (const item of plan.modifiedManaged) {
     if (item.kind === 'managed-block') modifiedBytes.set('AGENTS.md#managed-block', agents.scan.interval);
@@ -366,7 +367,7 @@ export async function createLifecyclePlan({ operation, target, release }) {
     plan, envelope,
     context: {
       root, release, state, stateBytes, oldBytes, agents, operationId: identifier,
-      fingerprints, paths, modifiedBytes, targetIdentity: targetIdentity(root),
+      fingerprints, paths, modifiedBytes, rootIdentity, targetIdentity: targetIdentity(root),
       gitEvidence,
     },
   };
@@ -520,13 +521,16 @@ async function recheckPlan(original, target, release) {
     && original.context.paths.every((item, index) => item === fresh.context.paths[index]
       && original.context.fingerprints.get(item) === fresh.context.fingerprints.get(item));
   if (!freshBytes.equals(originalBytes) || fresh.envelope.planSha256 !== original.envelope.planSha256
+      || fresh.context.rootIdentity !== original.context.rootIdentity
       || !fingerprintsMatch) {
     throw new LifecycleError('target changed after plan confirmation', { code: 'TARGET_CHANGED', exitCode: 4 });
   }
   return fresh;
 }
 
-function resultReport(plan, changed, temporary, sentinel, state, backups, directories, error = null) {
+function resultReport(plan, changed, temporary, sentinel, state, backups, directories, error = null, {
+  unverifiedBackups = [], preservationFailure = null,
+} = {}) {
   const changedSet = new Set(changed);
   const planned = uniqueSorted([...plan.creates, ...plan.replaces, ...plan.removes, ...(plan.blockAction !== 'none' ? ['AGENTS.md'] : [])]);
   return {
@@ -536,22 +540,45 @@ function resultReport(plan, changed, temporary, sentinel, state, backups, direct
     unchanged: planned.filter((item) => !changedSet.has(item)),
     temporary: uniqueSorted(temporary), sentinel, state,
     backups: backups.map((item) => item.backupPath).sort(byteCompare),
+    unverifiedBackups: uniqueSorted(unverifiedBackups.map((item) => item.backupPath)),
     directories: {
       removed: uniqueSorted(directories.removed),
       preserved: uniqueSorted(directories.preserved),
     },
+    preservationFailure,
     error: error ? { path: error.safePath ?? null, reason: error.message } : null,
   };
+}
+
+async function reconcileBackupEvidence(root, backups) {
+  const verified = [];
+  const unverified = [];
+  for (const backup of backups) {
+    try {
+      const info = await inspectContained(root, backup.backupPath);
+      if (info.type === 'absent') continue;
+      if (info.type !== 'file' || sha256(await readContainedFile(root, backup.backupPath)) !== backup.sha256) {
+        unverified.push(backup);
+      } else {
+        verified.push(backup);
+      }
+    } catch {
+      unverified.push(backup);
+    }
+  }
+  return { verified, unverified };
 }
 
 export async function applyLifecyclePlan({ planned, target, release, faults = [] }) {
   if (planned.plan.status !== 'READY') throw new LifecycleError('only a READY plan may be applied', { exitCode: 4 });
   const fresh = await recheckPlan(planned, target, release);
   const { plan, envelope, context } = fresh;
+  const releaseRootPin = await pinContainedRoot(context.root, context.rootIdentity);
   const trigger = faultController(faults);
   const changed = [];
   const temporary = [];
   const createdBackups = [];
+  const mutatedBackupPaths = new Set();
   const directories = { removed: [], preserved: [] };
   let sentinelBytes = null;
   let oldStateDeleted = false;
@@ -566,7 +593,9 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
       const bytes = context.modifiedBytes.get(backup.sourcePath);
       if (!bytes || sha256(bytes) !== backup.sha256) throw new LifecycleError('backup source changed', { code: 'TARGET_CHANGED', exitCode: 4, safePath: backup.sourcePath });
       trigger(`backup-write:${backup.backupPath}`, backup.backupPath);
-      await writeExclusiveContained(context.root, backup.backupPath, bytes, { mode: 0o600 });
+      await writeExclusiveContained(context.root, backup.backupPath, bytes, {
+        mode: 0o600, onMutation: () => mutatedBackupPaths.add(backup.backupPath),
+      });
       createdBackups.push(backup);
     }
     await verifyBackups(context.root, createdBackups);
@@ -667,6 +696,7 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
     return { exitCode: 0, report: resultReport(plan, changed, temporary, 'absent', plan.operation === 'uninstall' ? 'absent' : 'verified', createdBackups, directories) };
   } catch (error) {
     const failure = error instanceof LifecycleError ? error : new LifecycleError('lifecycle write or verification failed');
+    let preservationFailure = null;
     try {
       if (!committed) {
         const currentStateInfo = await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'absent' }));
@@ -683,7 +713,10 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
       }
     } catch (restoreError) {
       failure.message = `${failure.message}; state preservation failed`;
-      failure.report = { preservationFailure: restoreError.safePath ?? STATE_PATH };
+      preservationFailure = {
+        path: restoreError.safePath ?? STATE_PATH,
+        reason: restoreError.message ?? 'state preservation failed',
+      };
       if (sentinelBytes) await retainSentinel(context, sentinelBytes).catch(() => {});
     }
     for (const tempPath of [SENTINEL_TEMP_PATH, STATE_TEMP_PATH, ...context.paths.map(payloadTempPath)]) {
@@ -692,10 +725,34 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
     const sentinelState = (await inspectContained(context.root, SENTINEL_PATH).catch(() => ({ type: 'absent' }))).type === 'file' ? 'present' : 'absent';
     if (context.namespaceCreated) changed.push('.oh-my-harness');
     if (sentinelState === 'present') changed.push(SENTINEL_PATH);
-    const stateState = (await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'absent' }))).type === 'file'
-      ? (plan.operation === 'update' || plan.operation === 'uninstall' ? 'prior-preserved' : 'present') : 'absent';
-    failure.report = resultReport(plan, changed, temporary, sentinelState, stateState, createdBackups, directories, failure);
+    let stateState = 'absent';
+    const stateInfo = await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'unsafe' }));
+    if (stateInfo.type === 'file') {
+      try {
+        const stateBytes = await readContainedFile(context.root, STATE_PATH);
+        stateState = context.stateBytes && stateBytes.equals(context.stateBytes)
+          ? 'prior-preserved' : 'present-unverified';
+      } catch {
+        stateState = 'unverifiable';
+      }
+    } else if (stateInfo.type !== 'absent') {
+      stateState = 'unverifiable';
+    }
+    const backupEvidence = await reconcileBackupEvidence(context.root, plan.backups);
+    for (const backupPath of mutatedBackupPaths) {
+      if (!backupEvidence.verified.some((item) => item.backupPath === backupPath)
+          && !backupEvidence.unverified.some((item) => item.backupPath === backupPath)) {
+        const backup = plan.backups.find((item) => item.backupPath === backupPath);
+        if (backup) backupEvidence.unverified.push(backup);
+      }
+    }
+    failure.report = resultReport(plan, changed, temporary, sentinelState, stateState,
+      backupEvidence.verified, directories, failure, {
+        unverifiedBackups: backupEvidence.unverified, preservationFailure,
+      });
     throw failure;
+  } finally {
+    releaseRootPin();
   }
 }
 

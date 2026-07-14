@@ -254,6 +254,37 @@ test('backup is verified before a destructive update write begins', async (t) =>
   assert.deepEqual(await readFile(path.join(target, ...changedPath.split('/'))), drift);
 });
 
+test('failure reports reconcile backup artifacts created before helper verification completes', async (t) => {
+  const { target } = await targetFixture(t);
+  await apply('install', target);
+  const changedPath = '.oh-my-harness/docs/architecture.md';
+  const drift = Buffer.from('backup evidence drift\n');
+  await writeFile(path.join(target, ...changedPath.split('/')), drift);
+  const next = cloneRelease(release, { version: '0.2.0', replace: { [changedPath]: 'replacement\n' } });
+  const planned = await createLifecyclePlan({ operation: 'update', target, release: next });
+  const backupPath = planned.plan.backups[0].backupPath;
+  let injected = false;
+  const restore = setFilesystemObserverForTests((event) => {
+    if (!injected && event.operation === 'open-read' && event.path === backupPath) {
+      injected = true;
+      throw new Error('injected backup verification read failure');
+    }
+  });
+  let failure;
+  try {
+    await applyLifecyclePlan({ planned, target, release: next });
+  } catch (error) {
+    failure = error;
+  } finally {
+    restore();
+  }
+  assert(failure);
+  assert.equal(injected, true);
+  assert.deepEqual(await readFile(path.join(target, ...backupPath.split('/'))), drift);
+  assert(failure.report.backups.includes(backupPath));
+  assert.deepEqual(failure.report.unverifiedBackups, []);
+});
+
 test('sentinel publication faults precede every payload mutation and leave exact incomplete evidence', async (t) => {
   for (const fault of ['sentinel-parent', 'sentinel-temp-write', 'sentinel-link', 'sentinel-verify', 'sentinel-temp-cleanup']) {
     await t.test(fault, async (subtest) => {
@@ -373,11 +404,23 @@ test('update restores exact prior state on final sentinel failure; uninstall sta
 test('state restoration failure remains a hard failure with truthful sentinel evidence', async (t) => {
   const { target } = await targetFixture(t);
   await apply('install', target);
+  const priorState = await readFile(path.join(target, ...STATE_PATH.split('/')));
   const next = cloneRelease(release, { version: '0.2.0', replace: { '.oh-my-harness/docs/architecture.md': 'changed\n' } });
   const planned = await createLifecyclePlan({ operation: 'update', target, release: next });
-  await assert.rejects(applyLifecyclePlan({
-    planned, target, release: next, faults: ['sentinel-absence-verify', 'state-restore'],
-  }), /state preservation failed/);
+  let failure;
+  try {
+    await applyLifecyclePlan({
+      planned, target, release: next, faults: ['sentinel-absence-verify', 'state-restore'],
+    });
+  } catch (error) {
+    failure = error;
+  }
+  assert(failure);
+  assert.match(failure.message, /state preservation failed/);
+  assert.equal(failure.report.state, 'present-unverified');
+  assert.equal(failure.report.preservationFailure.path, STATE_PATH);
+  assert.match(failure.report.preservationFailure.reason, /state-restore/);
+  assert.notDeepEqual(await readFile(path.join(target, ...STATE_PATH.split('/'))), priorState);
   assert(await readFile(path.join(target, '.oh-my-harness/.operation-in-progress.json')));
   const nextPlan = await createLifecyclePlan({ operation: 'update', target, release: next });
   assert.equal(nextPlan.plan.status, 'INCOMPLETE_OR_UNOWNED');
