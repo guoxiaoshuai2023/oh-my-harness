@@ -132,7 +132,7 @@ async function stagePackage(packageRoot) {
   await cp(path.join(ROOT, 'src/bundle'), path.join(packageRoot, 'src/bundle'), { recursive: true, errorOnExist: true, force: false });
   const bundleMap = JSON.parse(await readFile(path.join(ROOT, 'packaging/bundle-map.json'), 'utf8'));
   const sourceFiles = new Set([
-    'AGENTS.md', 'package.json', 'packaging/bundle-map.json', 'packaging/managed-router-block.md',
+    'AGENTS.md', 'LICENSE', 'package.json', 'packaging/bundle-map.json', 'packaging/managed-router-block.md',
     'packaging/package-contract.json', 'packaging/schemas/bundle-inventory.schema.json',
     'packaging/schemas/package-contract.schema.json',
     ...bundleMap.entries.map((entry) => entry.source),
@@ -143,7 +143,7 @@ async function stagePackage(packageRoot) {
 async function expectedArchivePaths(packageRoot, release) {
   const installer = (await readdir(path.join(packageRoot, 'src/installer'))).sort();
   return new Set([
-    'package/package.json', 'package/README.md', 'package/bin/oh-my-harness.mjs',
+    'package/package.json', 'package/README.md', 'package/LICENSE', 'package/bin/oh-my-harness.mjs',
     ...installer.map((name) => `package/src/installer/${name}`),
     ...[...release.files.keys()].map((name) => `package/dist/${name}`),
   ]);
@@ -161,9 +161,16 @@ async function inspectArchive(archivePath, packageRoot) {
   assertSetEqual(new Set(archive.keys()), expected, 'archive allowlist');
   const metadata = JSON.parse(archive.get('package/package.json').toString('utf8'));
   if (metadata.name !== '@guoxiaoshuai2023/oh-my-harness' || metadata.version !== '0.1.0'
+      || metadata.license !== 'Apache-2.0'
       || metadata.bin?.['oh-my-harness'] !== 'bin/oh-my-harness.mjs'
       || metadata.engines?.node !== '>=24 <25' || metadata.dependencies || metadata.devDependencies) {
     throw new Error('packed package metadata does not match the fixed contract');
+  }
+  if (!archive.get('package/LICENSE')?.equals(await readFile(path.join(packageRoot, 'LICENSE')))) {
+    throw new Error('packed outer LICENSE does not match the staged Apache-2.0 license');
+  }
+  if (release.files.has('.oh-my-harness/LICENSE')) {
+    throw new Error('outer npm LICENSE must not enter the installed Harness bundle');
   }
   if (metadata.scripts?.prepack !== 'node src/installer/package-bundle.mjs prepare --pack-root "$OH_MY_HARNESS_PACK_ROOT"'
       || metadata.scripts?.postpack !== 'node src/installer/package-bundle.mjs cleanup'

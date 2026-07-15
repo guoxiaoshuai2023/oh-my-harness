@@ -118,7 +118,7 @@ async function stagePackage(stageRoot) {
   await cp(path.join(ROOT, 'src/bundle'), path.join(stageRoot, 'src/bundle'), { recursive: true, errorOnExist: true, force: false });
   const bundleMap = JSON.parse(await readFile(path.join(ROOT, 'packaging/bundle-map.json'), 'utf8'));
   const sourceFiles = new Set([
-    'AGENTS.md', 'README.md', 'package.json',
+    'AGENTS.md', 'LICENSE', 'README.md', 'package.json',
     'packaging/bundle-map.json', 'packaging/managed-router-block.md',
     'packaging/package-contract.json', 'packaging/schemas/bundle-inventory.schema.json',
     'packaging/schemas/package-contract.schema.json',
@@ -162,7 +162,7 @@ function tarEntries(archiveBytes) {
 async function expectedPackagePaths(stageRoot, release) {
   const installer = (await readdir(path.join(stageRoot, 'src/installer'))).sort();
   return [
-    'README.md', 'package.json', 'bin/oh-my-harness.mjs',
+    'LICENSE', 'README.md', 'package.json', 'bin/oh-my-harness.mjs',
     ...installer.map((name) => `src/installer/${name}`),
     ...[...release.files.keys()].map((name) => `dist/${name}`),
   ].sort();
@@ -468,10 +468,13 @@ export async function validateRelease() {
     assertExactSet([...archiveB.keys()], expectedPaths.map((item) => `package/${item}`), 'second packed archive file inventory');
     const metadata = JSON.parse(archiveA.get('package/package.json').toString('utf8'));
     assert.equal(metadata.name, '@guoxiaoshuai2023/oh-my-harness');
+    assert.equal(metadata.license, 'Apache-2.0');
     assert.deepEqual(metadata.bin, { 'oh-my-harness': 'bin/oh-my-harness.mjs' });
     assert.deepEqual(metadata.engines, { node: '>=24 <25' });
     assert.equal(metadata.dependencies, undefined);
     assert.equal(metadata.devDependencies, undefined);
+    assert.deepEqual(archiveA.get('package/LICENSE'), await readFile(path.join(stageA, 'LICENSE')));
+    assert.equal(releaseA.files.has('.oh-my-harness/LICENSE'), false);
     for (const name of archiveA.keys()) {
       assert(!/(?:^|\/)(?:install-state\.json|\.operation-in-progress\.json|__pycache__)(?:\/|$)/.test(name), name);
       assert(!name.includes('.oh-my-harness-backups') && !name.includes('task-docs/history') && !name.includes('/test/'), name);

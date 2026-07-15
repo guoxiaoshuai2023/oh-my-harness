@@ -166,11 +166,12 @@ export function assertPackageContract(contract, schema) {
   const errors = validateJsonSchema(contract, schema, 'packageContract');
   if (errors.length) fail(`package contract schema validation failed: ${errors[0]}`);
   assertExactKeys(contract, [
-    'schemaVersion', 'packageName', 'binaryName', 'binaryPath', 'nodeEngine',
+    'schemaVersion', 'packageName', 'license', 'binaryName', 'binaryPath', 'nodeEngine',
     'lifecycleRuntime', 'helperRuntime', 'canonicalCommands', 'forbiddenCommandPatterns',
     'shorterScopedForm', 'packageFiles', 'excludedPackageContent',
   ], 'package contract');
   if (contract.schemaVersion !== 1 || contract.packageName !== PACKAGE_NAME
+      || contract.license !== 'Apache-2.0'
       || contract.binaryName !== BINARY_NAME || contract.binaryPath !== 'bin/oh-my-harness.mjs'
       || contract.nodeEngine !== NODE_ENGINE) fail('package contract fixed identity mismatch');
   if (!contract.lifecycleRuntime.standardLibraryOnly

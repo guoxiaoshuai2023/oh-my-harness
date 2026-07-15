@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "packageName": "@guoxiaoshuai2023/oh-my-harness",
+  "license": "Apache-2.0",
   "binaryName": "oh-my-harness",
   "binaryPath": "bin/oh-my-harness.mjs",
   "nodeEngine": ">=24 <25",
@@ -39,7 +40,8 @@
     "src/installer/**",
     "dist/**",
     "README.md",
-    "package.json"
+    "package.json",
+    "LICENSE"
   ],
   "excludedPackageContent": [
     "task-docs/**",
