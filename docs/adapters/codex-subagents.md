@@ -14,6 +14,19 @@ Each invocation must apply repository rules through either verifiable runtime in
 
 ## Capability Interfaces
 
+Source profile names and installed profile names are deliberately different. The package maps exactly these six pairs; no wildcard or similarly named target file becomes owned:
+
+| Responsibility | Release source | Installed destination | Capability |
+| --- | --- | --- | --- |
+| Planner | `.codex/agents/harness-planner.toml` | `.codex/agents/oh-my-harness-planner.toml` | `oh_my_harness_planner` |
+| Plan evaluator | `.codex/agents/harness-plan-evaluator.toml` | `.codex/agents/oh-my-harness-plan-evaluator.toml` | `oh_my_harness_plan_evaluator` |
+| Solution designer | `.codex/agents/harness-solution-designer.toml` | `.codex/agents/oh-my-harness-solution-designer.toml` | `oh_my_harness_solution_designer` |
+| Solution evaluator | `.codex/agents/harness-solution-evaluator.toml` | `.codex/agents/oh-my-harness-solution-evaluator.toml` | `oh_my_harness_solution_evaluator` |
+| Executor | `.codex/agents/harness-executor.toml` | `.codex/agents/oh-my-harness-executor.toml` | `oh_my_harness_executor` |
+| Result evaluator | `.codex/agents/harness-result-evaluator.toml` | `.codex/agents/oh-my-harness-result-evaluator.toml` | `oh_my_harness_result_evaluator` |
+
+The role boundaries remain distinct:
+
 | File / capability | Packet inputs | Handoff | Non-transferable authority |
 | --- | --- | --- | --- |
 | `harness-planner.toml` / `oh_my_harness_planner` | Controlling request or anchor, scope/non-goals, risk/routes, evidence needs, packet limits | Bounded plan, outcome/evidence mapping, assumptions, uncertainty, blockers | No implementation or final acceptance |
@@ -25,17 +38,21 @@ Each invocation must apply repository rules through either verifiable runtime in
 
 The planner and solution designer may write only the planning or boundary artifact explicitly authorized by their packets. The three evaluator profiles retain `sandbox_mode = "read-only"`. Executor writes remain limited by the cited stable authority. Profile selection never transfers main-thread topology or acceptance ownership.
 
+The canonical calibration source is transformed from `task-docs/_harness/evaluator-calibration.md` to `.oh-my-harness/calibration/evaluator-calibration.md`. During bundle construction, the installed calibration hash is regenerated where declared and the installed path plus that hash are bound into the plan-evaluator, solution-evaluator, and result-evaluator profiles. This installed binding preserves artifact integrity but does not replace the main-thread requirement to pass the canonical calibration identity and path in each evaluator packet. Calibration selects recurring failure patterns; it never substitutes for primary evidence or evaluator judgment.
+
 ## Fan-Out And Runtime Limits
 
 Subagents do not create other agents by default. A packet may authorize nesting only when it fixes maximum depth and agent count, nested calls or another executable time/iteration budget, objective and scope, read/write authority, shared-state restrictions, expected output, stop conditions, and parent synthesis ownership. Nested work inherits the parent boundary and cannot widen it. If the runtime cannot enforce or the invocation cannot prove all required bounds, the parent must not delegate.
 
 `.codex/config.example.toml` is an optional copyable example for runtimes that support its keys. Its `multi_agent.max_depth = 1` value must not be treated as enforcement of agent count, calls, time or cost, scope, write authority, output size, or synthesis ownership. Those policy limits come from the packet, profiles, and accepted Task 1 authority and require runtime capability evidence where enforcement matters.
 
-## Explicit Full-v2 Compatibility
+## Full-v2 Compatibility
 
-The complete v2 composition remains supported when explicitly requested or required by stricter downstream policy. In that compatibility mode the ordered responsibilities are planner, plan evaluator, solution designer, solution evaluator, executor, result evaluator, followed by separate main-thread final review. The accepted boundary may use `ACCEPTED_CONTRACT.md` as the frozen strong form. Each handoff must satisfy the next capability interface, evaluator decisions remain strict, and route, retry, intervention, evidence, and producer-independence gates remain active.
+Adaptive main-thread governance is the default. The complete v2 composition MUST run when explicitly requested or required by stricter downstream policy. It also MAY be selected deliberately when a task-specific record shows that the six separate interfaces provide the clearest control coverage, compares a smaller viable topology, maps non-duplicative value and handoffs for every role, binds triggered gates and primary evidence, and preserves active main-thread synthesis, revision, intervention, finite retries, evidence arbitration, and final acceptance.
 
-That compatibility mode does not redefine the adaptive default. Outside an explicit full-v2 selection, the main thread may omit roles whose controls are otherwise satisfied, but it may not omit a triggered gate.
+In that composition the ordered responsibilities are planner, plan evaluator, solution designer, solution evaluator, executor, and result evaluator, followed by separate main-thread final review. The accepted boundary may use `ACCEPTED_CONTRACT.md` as the frozen strong form. Each handoff must satisfy the next capability interface, evaluator decisions remain strict, and route, retry, intervention, evidence, and producer-independence gates remain active.
+
+HIGH risk, role availability, Harness naming, or process inertia never selects full v2 by itself. The main thread may omit roles whose controls are otherwise satisfied, but it may not omit a triggered gate. Semantic fidelity augments these six responsibilities and does not create a fixed seventh agent.
 
 ## Porting Notes
 

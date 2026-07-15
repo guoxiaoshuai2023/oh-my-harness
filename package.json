@@ -1,0 +1,24 @@
+{
+  "name": "@guoxiaoshuai2023/oh-my-harness",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "bin": {
+    "oh-my-harness": "bin/oh-my-harness.mjs"
+  },
+  "files": [
+    "bin/oh-my-harness.mjs",
+    "src/installer/**",
+    "dist/**",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "prepack": "node src/installer/package-bundle.mjs prepare --pack-root \"$OH_MY_HARNESS_PACK_ROOT\"",
+    "postpack": "node src/installer/package-bundle.mjs cleanup",
+    "test": "node --test test/bundle/*.test.mjs test/lifecycle/*.test.mjs",
+    "validate:package": "node test/lifecycle/package-validation.mjs"
+  }
+}

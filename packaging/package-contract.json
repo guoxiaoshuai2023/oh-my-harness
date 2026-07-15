@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@guoxiaoshuai2023/oh-my-harness",
+  "binaryName": "oh-my-harness",
+  "binaryPath": "bin/oh-my-harness.mjs",
+  "nodeEngine": ">=24 <25",
+  "lifecycleRuntime": {
+    "language": "node",
+    "standardLibraryOnly": true,
+    "pythonRequired": false,
+    "thirdPartyRuntimeDependencies": 0
+  },
+  "helperRuntime": {
+    "language": "python",
+    "version": "3.11",
+    "requiredPayload": true,
+    "requiredHelpers": [
+      ".oh-my-harness/scripts/extract_agents_source.py",
+      ".oh-my-harness/scripts/validate_router_fixture.py",
+      ".oh-my-harness/scripts/validate_rule_preservation.py"
+    ]
+  },
+  "canonicalCommands": {
+    "install": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo>",
+    "update": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<target-version> oh-my-harness update --target <repo>",
+    "uninstall": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-harness uninstall --target <repo>",
+    "stableChannel": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@latest oh-my-harness install --target <repo>",
+    "localArchive": "npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <repo>"
+  },
+  "forbiddenCommandPatterns": [
+    "npx oh-my-harness",
+    "--package=oh-my-harness"
+  ],
+  "shorterScopedForm": {
+    "status": "unsupported-pending-direct-proof"
+  },
+  "packageFiles": [
+    "bin/oh-my-harness.mjs",
+    "src/installer/**",
+    "dist/**",
+    "README.md",
+    "package.json"
+  ],
+  "excludedPackageContent": [
+    "task-docs/**",
+    "test/**",
+    "fixtures/**",
+    ".oh-my-harness/install-state.json",
+    ".oh-my-harness-backups/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "local-absolute-paths",
+    "secrets"
+  ]
+}

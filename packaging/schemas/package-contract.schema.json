@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-my-harness.local/schemas/package-contract.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "packageName",
+    "binaryName",
+    "binaryPath",
+    "nodeEngine",
+    "lifecycleRuntime",
+    "helperRuntime",
+    "canonicalCommands",
+    "forbiddenCommandPatterns",
+    "shorterScopedForm",
+    "packageFiles",
+    "excludedPackageContent"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "packageName": { "const": "@guoxiaoshuai2023/oh-my-harness" },
+    "binaryName": { "const": "oh-my-harness" },
+    "binaryPath": { "const": "bin/oh-my-harness.mjs" },
+    "nodeEngine": { "const": ">=24 <25" },
+    "lifecycleRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "standardLibraryOnly",
+        "pythonRequired",
+        "thirdPartyRuntimeDependencies"
+      ],
+      "properties": {
+        "language": { "const": "node" },
+        "standardLibraryOnly": { "const": true },
+        "pythonRequired": { "const": false },
+        "thirdPartyRuntimeDependencies": { "const": 0 }
+      }
+    },
+    "helperRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "version", "requiredPayload", "requiredHelpers"],
+      "properties": {
+        "language": { "const": "python" },
+        "version": { "const": "3.11" },
+        "requiredPayload": { "const": true },
+        "requiredHelpers": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            { "const": ".oh-my-harness/scripts/extract_agents_source.py" },
+            { "const": ".oh-my-harness/scripts/validate_router_fixture.py" },
+            { "const": ".oh-my-harness/scripts/validate_rule_preservation.py" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "canonicalCommands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["install", "update", "uninstall", "stableChannel", "localArchive"],
+      "properties": {
+        "install": { "const": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo>" },
+        "update": { "const": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<target-version> oh-my-harness update --target <repo>" },
+        "uninstall": { "const": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-harness uninstall --target <repo>" },
+        "stableChannel": { "const": "npx --yes --package=@guoxiaoshuai2023/oh-my-harness@latest oh-my-harness install --target <repo>" },
+        "localArchive": { "const": "npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <repo>" }
+      }
+    },
+    "forbiddenCommandPatterns": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        { "const": "npx oh-my-harness" },
+        { "const": "--package=oh-my-harness" }
+      ],
+      "items": false
+    },
+    "shorterScopedForm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "const": "unsupported-pending-direct-proof" }
+      }
+    },
+    "packageFiles": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        { "const": "bin/oh-my-harness.mjs" },
+        { "const": "src/installer/**" },
+        { "const": "dist/**" },
+        { "const": "README.md" },
+        { "const": "package.json" }
+      ],
+      "items": false
+    },
+    "excludedPackageContent": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "prefixItems": [
+        { "const": "task-docs/**" },
+        { "const": "test/**" },
+        { "const": "fixtures/**" },
+        { "const": ".oh-my-harness/install-state.json" },
+        { "const": ".oh-my-harness-backups/**" },
+        { "const": "**/__pycache__/**" },
+        { "const": "**/*.pyc" },
+        { "const": "local-absolute-paths" },
+        { "const": "secrets" }
+      ],
+      "items": false
+    }
+  }
+}

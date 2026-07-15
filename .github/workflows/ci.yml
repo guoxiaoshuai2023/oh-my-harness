@@ -22,14 +22,23 @@ jobs:
       - name: Check normative diff whitespace
         shell: bash
         run: |
-          # Run artifacts are SHA-addressed evidence. Validate the normative
-          # repository diff without rewriting immutable history bytes.
+          # Run and accepted-planning artifacts are SHA-addressed evidence.
+          # Validate the normative repository diff without rewriting their
+          # immutable bytes.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             git diff --check \
               "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
-              -- . ':(exclude)task-docs/history/**'
+              -- . \
+              ':(exclude)task-docs/history/**' \
+              ':(exclude)task-docs/universal-harness-adoption-accepted-planning-inputs-20260713-v3.md' \
+              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r1.md' \
+              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r2.md'
           else
-            git show --check --format= HEAD -- . ':(exclude)task-docs/history/**'
+            git show --check --format= HEAD -- . \
+              ':(exclude)task-docs/history/**' \
+              ':(exclude)task-docs/universal-harness-adoption-accepted-planning-inputs-20260713-v3.md' \
+              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r1.md' \
+              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r2.md'
           fi
 
       - name: Set up Python 3.11
@@ -217,3 +226,35 @@ jobs:
               "structural checks and router smoke are not semantic proof"
           )
           PY
+
+      - name: Set up Node.js 24.14.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Verify package runtime boundary
+        run: |
+          node --version
+          npm --version
+          python3.11 --version
+          node - <<'NODE'
+          const metadata = require('./package.json');
+          if (metadata.dependencies || metadata.devDependencies) {
+            throw new Error('lifecycle package must have zero third-party runtime dependencies');
+          }
+          if (metadata.engines?.node !== '>=24 <25') {
+            throw new Error('unexpected Node engine');
+          }
+          NODE
+
+      - name: Run accepted bundle and lifecycle tests
+        run: npm test
+
+      - name: Run Universal Harness acceptance scenarios
+        run: node --test test/acceptance/*.test.mjs
+
+      - name: Validate local package lifecycle
+        run: npm run validate:package
+
+      - name: Validate release contents and semantics
+        run: node tools/validate-release.mjs

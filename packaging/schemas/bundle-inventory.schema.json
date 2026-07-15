@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-my-harness.local/schemas/bundle-inventory.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bundleVersion",
+    "packageName",
+    "binaryName",
+    "nodeEngine",
+    "installerCompatibility",
+    "requiredFiles",
+    "optionalFiles",
+    "managedBlock",
+    "ownership",
+    "referencePolicy"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "bundleVersion": { "type": "string", "minLength": 1 },
+    "packageName": { "const": "@guoxiaoshuai2023/oh-my-harness" },
+    "binaryName": { "const": "oh-my-harness" },
+    "nodeEngine": { "const": ">=24 <25" },
+    "installerCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageName", "binaryName", "nodeEngine"],
+      "properties": {
+        "packageName": { "const": "@guoxiaoshuai2023/oh-my-harness" },
+        "binaryName": { "const": "oh-my-harness" },
+        "nodeEngine": { "const": ">=24 <25" }
+      }
+    },
+    "requiredFiles": {
+      "type": "array",
+      "minItems": 42,
+      "maxItems": 42,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetId",
+          "sourcePath",
+          "sourceSha256",
+          "destinationPath",
+          "destinationSha256",
+          "required",
+          "kind",
+          "transformations"
+        ],
+        "properties": {
+          "assetId": { "type": "string", "minLength": 1 },
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "destinationPath": { "type": "string", "minLength": 1 },
+          "destinationSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "required": { "const": true },
+          "kind": { "type": "string", "minLength": 1 },
+          "transformations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "optionalFiles": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "managedBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath", "sourceSha256", "assetPath", "sha256", "startMarker", "endMarker"],
+      "properties": {
+        "sourcePath": { "const": "AGENTS.md" },
+        "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "assetPath": { "const": ".oh-my-harness/managed-router-block.md" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "startMarker": { "const": "<!-- oh-my-harness:start -->" },
+        "endMarker": { "const": "<!-- oh-my-harness:end -->" }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payloadPaths", "agentPaths", "managedBlockId"],
+      "properties": {
+        "payloadPaths": {
+          "type": "array",
+          "minItems": 42,
+          "maxItems": 42,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "agentPaths": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^\\.codex/agents/oh-my-harness-[a-z-]+\\.toml$" }
+        },
+        "managedBlockId": { "const": "oh-my-harness" }
+      }
+    },
+    "referencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtimeSourcePathsForbidden", "provenanceSourcePathsAllowed"],
+      "properties": {
+        "runtimeSourcePathsForbidden": { "const": true },
+        "provenanceSourcePathsAllowed": { "const": true }
+      }
+    }
+  }
+}

@@ -16,7 +16,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - proving that governance rules were moved, not weakened,
 - validating behavior with evidence instead of vague confidence.
 
-`oh-my-harness` turns those concerns into a practical repo structure that any project can copy, adapt, and enforce.
+`oh-my-harness` turns those concerns into a practical repo structure that a project can install, adapt, and enforce.
 
 ## What You Get
 
@@ -27,6 +27,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
 - **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
+- **A non-destructive package lifecycle** for installing, updating, and uninstalling the exact managed surface without adopting files by name.
 - **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks, checking rule-preservation traceability, and running router fixture smoke/coverage checks.
 - **Adoption docs** for migrating an existing project into the harness safely.
 
@@ -46,24 +47,57 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
 | `scripts/` | Standard-library Python helpers for snapshot extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
-| `docs/adoption/` | Migration runbook and open-source release checklist. |
+| `docs/adoption/` | Migration guidance and release checks. The universal adoption runbook and bundle lifecycle spec are release-repository-only; they are not installed payload. |
+
+## Universal Harness Adoption
+
+Universal Harness Adoption installs a fixed oh-my-harness release into an existing Codex repository without taking ownership of that repository's existing governance. An immutable bundle inventory and an installation-state record confine the managed installation surface and ownership to three surfaces:
+
+- release assets under `.oh-my-harness/`;
+- six Codex agent profiles named `.codex/agents/oh-my-harness-*.toml`;
+- one marker-delimited managed router block in the target repository's root `AGENTS.md`.
+
+Everything outside those owned files and the managed block remains target-owned. The bytes before and after the managed `AGENTS.md` block are preserved. Existing agents, skills, plugins, scripts, CI, domain rules, and other frameworks remain in place; a path, ownership, or marker conflict stops the operation instead of triggering a general merge.
+
+Lifecycle operations are ownership-aware. A same-version reinstall is a no-op only when the installation state, owned files, and managed block are unchanged and conflict-free. Updating or uninstalling user-modified managed content requires a deterministic backup under `.oh-my-harness-backups/<operation-id>/`, path-specific disclosure, and explicit confirmation. These auxiliary writes sit outside the managed installation surface: the backups are target-owned recovery artifacts, not Harness-owned installation content. Uninstall removes only state-proven Harness files, the managed block, and empty parent directories that the Harness recorded as creating.
+
+The current MVP is a Codex repo-local, single-runtime installer. It does not provide global installation, multi-runtime installation, arbitrary configuration merging, or a general migration framework.
 
 ## Quick Start
 
-Copy the harness into a target repo:
+The product and repository are named `oh-my-harness`. The npm package identity is `@guoxiaoshuai2023/oh-my-harness`, and its CLI binary is `oh-my-harness`.
+
+The lifecycle CLI requires Node.js 24 (`>=24 <25`) and uses only the Node standard library. Python 3.11 is required only when running the three Python helper validators shipped in the installed Harness; Python is not required to launch `install`, `update`, or `uninstall`.
+
+The npm package has not been published as part of the current implementation acceptance. To verify and use the actual package locally from this repository, pack it into an OS temporary directory and invoke the binary from that archive:
 
 ```sh
-TARGET=/path/to/target-repo
-mkdir -p "$TARGET/docs" "$TARGET/task-docs" "$TARGET/scripts"
-cp AGENTS.md "$TARGET/"
-cp -R .codex "$TARGET/"
-cp -R docs/agent-routing "$TARGET/docs/"
-cp -R task-docs/_harness "$TARGET/task-docs/"
-cp scripts/extract_agents_source.py \
-  scripts/validate_rule_preservation.py \
-  scripts/validate_router_fixture.py \
-  "$TARGET/scripts/"
+package_dir="$(mktemp -d)"
+package_file="$(npm pack --pack-destination "$package_dir" --silent)"
+package_path="$package_dir/$package_file"
+
+npx --yes --package="$package_path" oh-my-harness install --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness install --target <repo>
+npx --yes --package="$package_path" oh-my-harness update --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness update --target <repo>
+npx --yes --package="$package_path" oh-my-harness uninstall --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness uninstall --target <repo>
 ```
+
+Remove the temporary directory after local testing. When a package version is formally published, registry commands become available in this form:
+
+```sh
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo> --dry-run
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo>
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<target-version> oh-my-harness update --target <repo>
+npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-harness uninstall --target <repo>
+```
+
+Append `--dry-run` to any lifecycle operation to produce a plan without applying it. Each mutating command prints its exact plan before applying it. In a TTY it asks once for confirmation; automation must add the CLI's `--yes` flag after inspecting the plan. Manual copying, unscoped `npx oh-my-harness`, and `--package=oh-my-harness` are not valid managed installation paths.
+
+The package always installs three required Python 3.11 helpers: `extract_agents_source.py`, `validate_router_fixture.py`, and `validate_rule_preservation.py`.
+
+Before every mutation, the installer checks path normalization, repository-root containment, symlinks, and special files. A detected unsafe path stops the operation. This MVP does not claim atomic protection against a privileged concurrent process replacing a checked path in the remaining interval before the filesystem syscall; eliminating that race requires an OS-specific or native descriptor-relative mutation architecture outside the current scope.
 
 Before shrinking an existing `AGENTS.md`, create source traceability artifacts:
 
@@ -93,6 +127,8 @@ python3 scripts/validate_router_fixture.py \
 ```
 
 This helper checks trigger text, route paths, and optional ledger Rule ID mentions. It is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
+
+For adoption details, use the [router refactor runbook](docs/adoption/router-refactor-runbook.md) and the [open-source release checklist](docs/adoption/open-source-release-checklist.md). Repository maintainers also have the release-only `universal-harness-adoption-runbook.md` and `bundle-lifecycle-spec.md` in the adoption-docs directory; those two files explain the package lifecycle but are intentionally outside the installed bundle.
 
 ## How It Works
 
@@ -131,8 +167,10 @@ Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex co
 
 ## Not A Framework Lock-In
 
-This repo does not require a specific agent vendor, IDE, CI system, task runner, or programming language. The harness is mostly Markdown plus a few small Python scripts. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
+This repo does not require a specific agent vendor, IDE, CI system, or task runner. The managed lifecycle is a Node standard-library CLI, while the installed harness is mostly Markdown plus three Python 3.11 validation helpers. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
+
+That architectural portability is separate from the current adoption MVP, which installs only the six repo-local Codex profiles described above.
 
 ## Open Source Status
 
-This repo is structured for open-source publication, but no license has been selected yet. License selection is a release-blocking owner decision before publishing. See `docs/adoption/open-source-release-checklist.md`.
+This repo is structured for open-source publication, but local archive acceptance is not a public release, npm scope proof, signing, or publication authorization. No license has been selected yet. License selection, scope ownership/access, credentials, signing, publication, and release creation remain later owner-controlled work. See `docs/adoption/open-source-release-checklist.md`.
