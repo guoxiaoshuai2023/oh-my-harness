@@ -327,16 +327,24 @@ test('mutation-boundary parent swaps stop before any outside write or deletion',
         swapped = true;
       }
     });
-    let result;
+    let failure;
     try {
-      result = await applyLifecyclePlan({ planned, target: fixture.target, release });
+      await assert.rejects(
+        applyLifecyclePlan({ planned, target: fixture.target, release }),
+        (error) => {
+          failure = error;
+          return error.code === 'UNSAFE_PATH' && error.exitCode === 4;
+        },
+      );
     } finally {
       restore();
     }
     assert.equal(swapped, true);
     assert.equal((await readFile(path.join(outside, 'agents/canary'))).toString(), 'outside canary\n');
-    assert(result.report.directories.preserved.includes('.codex/agents'));
-    assert(result.report.directories.preserved.includes('.codex'));
+    assert.equal(failure.report.success, false);
+    assert.equal(failure.report.error.path, '.codex/agents');
+    assert.equal(failure.report.state, 'absent');
+    assert.equal(failure.report.sentinel, 'absent');
   });
 });
 
@@ -356,7 +364,13 @@ test('state traversal, wrong-target copies, malformed state, and unscoped identi
 
   for (const mutate of [
     (state) => ({ ...state, unexpected: true }),
+    (state) => {
+      const { managedDirectories: omitted, ...withoutManagedDirectories } = state;
+      assert(Array.isArray(omitted));
+      return withoutManagedDirectories;
+    },
     (state) => ({ ...state, installer: { ...state.installer, packageName: 'oh-my-harness' } }),
+    (state) => ({ ...state, managedDirectories: ['../outside'] }),
     (state) => ({ ...state, ownedFiles: [...state.ownedFiles, { path: '../outside', sha256: '0'.repeat(64), kind: 'payload' }] }),
     (state) => ({ ...state, ownedFiles: [{ path: 'target-owned.txt', sha256: '0'.repeat(64), kind: 'payload' }, ...state.ownedFiles] }),
   ]) {
@@ -465,6 +479,28 @@ test('unborn Git reports only exact planned untracked or staged overlap', async 
   assert.deepEqual(stagedPlan.plan.gitOverlap.paths, [{ path: overlap, state: 'staged' }]);
   assert(stagedPlan.plan.conflicts.some((item) => item.code === 'DIRTY_OVERLAP' && item.path === overlap));
   assert.deepEqual(await treeSnapshot(staged.target), stagedBefore);
+});
+
+test('temporary Git-view cleanup failure stops planning instead of returning a clean result', async (t) => {
+  const { target } = await targetFixture(t);
+  await initializeGit(target);
+  let temporaryRoot = null;
+  const restore = setFilesystemObserverForTests((event) => {
+    if (event.operation === 'before-git-temp-cleanup') {
+      temporaryRoot = event.detail;
+      throw new Error('injected temporary Git-view cleanup failure');
+    }
+  });
+  try {
+    await assert.rejects(
+      createLifecyclePlan({ operation: 'install', target, release }),
+      /temporary Git view cleanup failed/i,
+    );
+  } finally {
+    restore();
+    if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
+  }
+  assert(temporaryRoot);
 });
 
 test('target and inherited alternate or replacement routing stops before sanitized Git execution', async (t) => {

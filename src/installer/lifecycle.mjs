@@ -684,11 +684,11 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
         .sort((left, right) => right.split('/').length - left.split('/').length || byteCompare(right, left));
       for (const directory of candidates) {
         if (!recorded.has(directory)) {
-          const info = await inspectContained(context.root, directory).catch(() => ({ type: 'unsafe' }));
+          const info = await inspectContained(context.root, directory);
           if (info.type !== 'absent') directories.preserved.push(directory);
           continue;
         }
-        const outcome = await removeEmptyContainedDirectory(context.root, directory).catch(() => 'preserved');
+        const outcome = await removeEmptyContainedDirectory(context.root, directory);
         if (outcome === 'removed') directories.removed.push(directory);
         else if (outcome === 'preserved') directories.preserved.push(directory);
       }

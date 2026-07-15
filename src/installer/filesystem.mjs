@@ -607,7 +607,22 @@ export async function exactGitOverlap(targetRoot, relativePaths) {
   } catch {
     return { status: 'unsafe-git-layout', paths: [], evidence: { failure: 'exception' } };
   } finally {
-    if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true }).catch(() => {});
+    if (temporaryRoot) {
+      try {
+        observe('before-git-temp-cleanup', '.git', temporaryRoot);
+        await rm(temporaryRoot, { recursive: true, force: true });
+        try {
+          await lstat(temporaryRoot);
+          throw new Error('temporary Git view remains');
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      } catch {
+        throw new LifecycleError('temporary Git view cleanup failed', {
+          code: 'IO_UNAVAILABLE', exitCode: 5, safePath: '.git',
+        });
+      }
+    }
   }
 }
 
