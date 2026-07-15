@@ -49,31 +49,54 @@ AI agents are good at doing work. They are less reliable when the work depends o
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
 | `docs/adoption/` | Migration guidance and release checks. The universal adoption runbook and bundle lifecycle spec are release-repository-only; they are not installed payload. |
 
+## Universal Harness Adoption
+
+Universal Harness Adoption installs a fixed oh-my-harness release into an existing Codex repository without taking ownership of that repository's existing governance. An immutable bundle inventory and an installation-state record confine lifecycle writes to three surfaces:
+
+- release assets under `.oh-my-harness/`;
+- six Codex agent profiles named `.codex/agents/oh-my-harness-*.toml`;
+- one marker-delimited managed router block in the target repository's root `AGENTS.md`.
+
+Everything outside those owned files and the managed block remains target-owned. The bytes before and after the managed `AGENTS.md` block are preserved. Existing agents, skills, plugins, scripts, CI, domain rules, and other frameworks remain in place; a path, ownership, or marker conflict stops the operation instead of triggering a general merge.
+
+Lifecycle operations are ownership-aware. Reinstalling the same version is a no-op. Updating or uninstalling user-modified managed content requires a deterministic backup under `.oh-my-harness-backups/<operation-id>/`, path-specific disclosure, and explicit confirmation. Those backups are target-owned recovery artifacts. Uninstall removes only state-proven Harness files, the managed block, and empty parent directories that the Harness recorded as creating.
+
+The current MVP is a Codex repo-local, single-runtime installer. It does not provide global installation, multi-runtime installation, arbitrary configuration merging, or a general migration framework.
+
 ## Quick Start
 
-The lifecycle CLI requires Node `>=24 <25` and uses only the Node standard library. Choose an exact package version, then preview and install:
+The product and repository are named `oh-my-harness`. The npm package identity is `@guoxiaoshuai2023/oh-my-harness`, and its CLI binary is `oh-my-harness`.
+
+The lifecycle CLI requires Node.js 24 (`>=24 <25`) and uses only the Node standard library. Python 3.11 is required only when running the three Python helper validators shipped in the installed Harness; Python is not required to launch `install`, `update`, or `uninstall`.
+
+The npm package has not been published as part of the current implementation acceptance. To verify and use the actual package locally from this repository, pack it into an OS temporary directory and invoke the binary from that archive:
+
+```sh
+package_dir="$(mktemp -d)"
+package_file="$(npm pack --pack-destination "$package_dir" --silent)"
+package_path="$package_dir/$package_file"
+
+npx --yes --package="$package_path" oh-my-harness install --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness install --target <repo>
+npx --yes --package="$package_path" oh-my-harness update --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness update --target <repo>
+npx --yes --package="$package_path" oh-my-harness uninstall --target <repo> --dry-run
+npx --yes --package="$package_path" oh-my-harness uninstall --target <repo>
+```
+
+Remove the temporary directory after local testing. When a package version is formally published, registry commands become available in this form:
 
 ```sh
 npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo> --dry-run
-npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<version> oh-my-harness install --target <repo>
-```
-
-Use the target release for an update and an installer version compatible with the installed state for uninstall:
-
-```sh
 npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<target-version> oh-my-harness update --target <repo>
 npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-harness uninstall --target <repo>
 ```
 
-For local acceptance of a packed archive, use the same binary and lifecycle:
+Append `--dry-run` to any lifecycle operation to produce a plan without applying it. Each mutating command prints its exact plan before applying it. In a TTY it asks once for confirmation; automation must add the CLI's `--yes` flag after inspecting the plan. Manual copying, unscoped `npx oh-my-harness`, and `--package=oh-my-harness` are not valid managed installation paths.
 
-```sh
-npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <repo>
-```
+The package always installs three required Python 3.11 helpers: `extract_agents_source.py`, `validate_router_fixture.py`, and `validate_rule_preservation.py`.
 
-Each mutating command prints its exact plan before applying it. In a TTY it asks once for confirmation; automation must add `--yes` after inspecting the plan. Manual copying, `npx oh-my-harness`, and `--package=oh-my-harness` are not valid managed installation paths.
-
-The package always installs three required Python 3.11 helpers: `extract_agents_source.py`, `validate_router_fixture.py`, and `validate_rule_preservation.py`. Python is used only when running those helpers; install, update, and uninstall do not require Python.
+Before every mutation, the installer checks path normalization, repository-root containment, symlinks, and special files. A detected unsafe path stops the operation. This MVP does not claim atomic protection against a privileged concurrent process replacing a checked path in the remaining interval before the filesystem syscall; eliminating that race requires an OS-specific or native descriptor-relative mutation architecture outside the current scope.
 
 Before shrinking an existing `AGENTS.md`, create source traceability artifacts:
 
@@ -144,6 +167,8 @@ Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex co
 ## Not A Framework Lock-In
 
 This repo does not require a specific agent vendor, IDE, CI system, or task runner. The managed lifecycle is a Node standard-library CLI, while the installed harness is mostly Markdown plus three Python 3.11 validation helpers. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
+
+That architectural portability is separate from the current adoption MVP, which installs only the six repo-local Codex profiles described above.
 
 ## Open Source Status
 
