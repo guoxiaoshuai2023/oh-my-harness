@@ -12,4 +12,5 @@ dist/
 build/
 coverage/
 *.log
-task-docs/history/*/scratch/
+task-docs/history/
+task-docs/work/

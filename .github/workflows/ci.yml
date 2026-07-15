@@ -22,23 +22,11 @@ jobs:
       - name: Check normative diff whitespace
         shell: bash
         run: |
-          # Run and accepted-planning artifacts are SHA-addressed evidence.
-          # Validate the normative repository diff without rewriting their
-          # immutable bytes.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             git diff --check \
-              "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
-              -- . \
-              ':(exclude)task-docs/history/**' \
-              ':(exclude)task-docs/universal-harness-adoption-accepted-planning-inputs-20260713-v3.md' \
-              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r1.md' \
-              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r2.md'
+              "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
           else
-            git show --check --format= HEAD -- . \
-              ':(exclude)task-docs/history/**' \
-              ':(exclude)task-docs/universal-harness-adoption-accepted-planning-inputs-20260713-v3.md' \
-              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r1.md' \
-              ':(exclude)task-docs/universal-harness-adoption-plan-review-20260713-v5-r2.md'
+            git show --check --format= HEAD
           fi
 
       - name: Set up Python 3.11
@@ -48,6 +36,11 @@ jobs:
 
       - name: Compile helper scripts
         run: python -m py_compile scripts/*.py
+
+      - name: Validate repository hygiene
+        run: |
+          python -m unittest discover -s test/repository-hygiene -p 'test_*.py'
+          python tools/check_repository_hygiene.py
 
       - name: Parse Codex agent profiles
         run: |
