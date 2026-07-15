@@ -51,7 +51,7 @@ AI agents are good at doing work. They are less reliable when the work depends o
 
 ## Universal Harness Adoption
 
-Universal Harness Adoption installs a fixed oh-my-harness release into an existing Codex repository without taking ownership of that repository's existing governance. An immutable bundle inventory and an installation-state record confine lifecycle writes to three surfaces:
+Universal Harness Adoption installs a fixed oh-my-harness release into an existing Codex repository without taking ownership of that repository's existing governance. An immutable bundle inventory and an installation-state record confine the managed installation surface and ownership to three surfaces:
 
 - release assets under `.oh-my-harness/`;
 - six Codex agent profiles named `.codex/agents/oh-my-harness-*.toml`;
@@ -59,7 +59,7 @@ Universal Harness Adoption installs a fixed oh-my-harness release into an existi
 
 Everything outside those owned files and the managed block remains target-owned. The bytes before and after the managed `AGENTS.md` block are preserved. Existing agents, skills, plugins, scripts, CI, domain rules, and other frameworks remain in place; a path, ownership, or marker conflict stops the operation instead of triggering a general merge.
 
-Lifecycle operations are ownership-aware. Reinstalling the same version is a no-op. Updating or uninstalling user-modified managed content requires a deterministic backup under `.oh-my-harness-backups/<operation-id>/`, path-specific disclosure, and explicit confirmation. Those backups are target-owned recovery artifacts. Uninstall removes only state-proven Harness files, the managed block, and empty parent directories that the Harness recorded as creating.
+Lifecycle operations are ownership-aware. A same-version reinstall is a no-op only when the installation state, owned files, and managed block are unchanged and conflict-free. Updating or uninstalling user-modified managed content requires a deterministic backup under `.oh-my-harness-backups/<operation-id>/`, path-specific disclosure, and explicit confirmation. These auxiliary writes sit outside the managed installation surface: the backups are target-owned recovery artifacts, not Harness-owned installation content. Uninstall removes only state-proven Harness files, the managed block, and empty parent directories that the Harness recorded as creating.
 
 The current MVP is a Codex repo-local, single-runtime installer. It does not provide global installation, multi-runtime installation, arbitrary configuration merging, or a general migration framework.
 
