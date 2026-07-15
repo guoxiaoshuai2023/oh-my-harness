@@ -10,6 +10,7 @@ This release-repository-only specification defines the supported target lifecycl
 - Installed agent prefix: `.codex/agents/oh-my-harness-`
 - Lifecycle runtime: Node `>=24 <25`, standard library only
 - Helper runtime: Python 3.11, only for the required `extract_agents_source.py`, `validate_router_fixture.py`, and `validate_rule_preservation.py` payload
+- Repository and outer npm package license: Apache-2.0; `LICENSE` is not installed payload
 
 The package name, binary, payload namespace, and agent prefix are distinct identities. Manual copying, an unscoped package command, a global install, or another runtime does not establish this lifecycle.
 
@@ -95,6 +96,6 @@ npx --yes --package=@guoxiaoshuai2023/oh-my-harness@<compatible-version> oh-my-h
 npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <repo>
 ```
 
-Local `.tgz` smoke, fixtures, tests, hashes, and package validation can demonstrate a reproducible local release candidate. They do not establish a license, npm scope access or ownership, credentials, signing, publication, release creation, or external-write approval. Those remain later owner-controlled release actions.
+Local `.tgz` smoke, fixtures, tests, hashes, and package validation can demonstrate a reproducible local release candidate. The repository and packed npm package carry Apache-2.0, while the installed `.oh-my-harness/` payload does not include `LICENSE`. Local evidence does not establish npm scope access or ownership, credentials, signing, publication, release creation, or external-write approval. Those remain later owner-controlled release actions.
 
 Structural checks are never semantic proof. Hash equality proves byte equality, parsing proves shape, and fixtures prove their encoded scenarios. Adaptive default, required full v2, evidence-backed deliberate full v2, fact-triggered gates, finite retries/intervention, main-thread final authority, and the absence of a fixed seventh agent must still be reviewed for preserved meaning and modal force.

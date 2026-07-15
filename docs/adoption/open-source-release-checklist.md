@@ -1,10 +1,15 @@
 # Open Source Release Checklist
 
-Use this before publishing `oh-my-harness` to GitHub.
+Use this before an open-source GitHub or npm release of `oh-my-harness`.
+
+## License Baseline
+
+- Confirm the repository root contains the standard Apache License 2.0 text in `LICENSE`.
+- Confirm `package.json`, `package-lock.json`, and the package contract declare `Apache-2.0`.
+- Confirm the packed npm archive contains the root `LICENSE`, while `packaging/bundle-map.json` and the installed `.oh-my-harness/` payload do not include it.
 
 ## Required Decisions
 
-- Choose a license. No license has been selected for this repo. License selection is a release-blocking owner decision before publication.
 - Decide whether to include a `CODE_OF_CONDUCT.md`.
 - Decide whether to include `CONTRIBUTING.md`.
 - Decide whether to accept issues, discussions, pull requests, or all three.
@@ -48,10 +53,9 @@ PY
 
 ## Suggested GitHub Files
 
-- `LICENSE`
 - `CODE_OF_CONDUCT.md`
 - `CONTRIBUTING.md`
 - `.github/ISSUE_TEMPLATE/`
 - `.github/pull_request_template.md`
 
-Add them only after the project owner chooses the policies.
+Add optional community files only after the project owner chooses the policies. Apache-2.0 is already the open-source legal baseline for the repository and package.

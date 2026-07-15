@@ -6,6 +6,7 @@
   "required": [
     "schemaVersion",
     "packageName",
+    "license",
     "binaryName",
     "binaryPath",
     "nodeEngine",
@@ -20,6 +21,7 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "packageName": { "const": "@guoxiaoshuai2023/oh-my-harness" },
+    "license": { "const": "Apache-2.0" },
     "binaryName": { "const": "oh-my-harness" },
     "binaryPath": { "const": "bin/oh-my-harness.mjs" },
     "nodeEngine": { "const": ">=24 <25" },
@@ -92,14 +94,15 @@
     },
     "packageFiles": {
       "type": "array",
-      "minItems": 5,
-      "maxItems": 5,
+      "minItems": 6,
+      "maxItems": 6,
       "prefixItems": [
         { "const": "bin/oh-my-harness.mjs" },
         { "const": "src/installer/**" },
         { "const": "dist/**" },
         { "const": "README.md" },
-        { "const": "package.json" }
+        { "const": "package.json" },
+        { "const": "LICENSE" }
       ],
       "items": false
     },

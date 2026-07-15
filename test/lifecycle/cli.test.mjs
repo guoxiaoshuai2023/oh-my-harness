@@ -126,15 +126,17 @@ test('package and lock metadata exactly bind the scoped identity, binary, engine
   assert.equal(metadata.name, '@guoxiaoshuai2023/oh-my-harness');
   assert.equal(metadata.version, '0.1.0');
   assert.equal(metadata.type, 'module');
+  assert.equal(metadata.license, 'Apache-2.0');
   assert.deepEqual(metadata.engines, { node: '>=24 <25' });
   assert.deepEqual(metadata.bin, { 'oh-my-harness': 'bin/oh-my-harness.mjs' });
-  assert.deepEqual(metadata.files, ['bin/oh-my-harness.mjs', 'src/installer/**', 'dist/**', 'README.md', 'package.json']);
+  assert.deepEqual(metadata.files, ['bin/oh-my-harness.mjs', 'src/installer/**', 'dist/**', 'README.md', 'package.json', 'LICENSE']);
   assert.equal(metadata.scripts.prepack, 'node src/installer/package-bundle.mjs prepare --pack-root "$OH_MY_HARNESS_PACK_ROOT"');
   assert.equal(metadata.scripts['validate:package'], 'node test/lifecycle/package-validation.mjs');
   assert.equal(Object.keys(metadata.scripts).filter((name) => name.includes('validate')).length, 1);
   assert.equal(metadata.dependencies, undefined);
   assert.equal(metadata.devDependencies, undefined);
   assert.equal(lock.packages[''].name, metadata.name);
+  assert.equal(lock.packages[''].license, metadata.license);
   assert.deepEqual(lock.packages[''].bin, metadata.bin);
   assert.deepEqual(lock.packages[''].engines, metadata.engines);
   assert.deepEqual(CONFLICT_CODES, [

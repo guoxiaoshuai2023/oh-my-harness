@@ -173,4 +173,6 @@ That architectural portability is separate from the current adoption MVP, which 
 
 ## Open Source Status
 
-This repo is structured for open-source publication, but local archive acceptance is not a public release, npm scope proof, signing, or publication authorization. No license has been selected yet. License selection, scope ownership/access, credentials, signing, publication, and release creation remain later owner-controlled work. See `docs/adoption/open-source-release-checklist.md`.
+This project is licensed under the [Apache License 2.0](LICENSE). The license is included at the npm package root and is intentionally not installed into `.oh-my-harness/`.
+
+Local archive acceptance is not a public release, npm scope proof, signing, or publication authorization. Scope ownership/access, credentials, signing, publication, and release creation remain later owner-controlled work. See `docs/adoption/open-source-release-checklist.md`.

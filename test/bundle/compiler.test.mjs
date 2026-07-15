@@ -22,6 +22,7 @@ import {
 test('package contract and schema fix the scoped stdlib-only release contract', async () => {
   const contract = await readJson('packaging/package-contract.json');
   assert.equal(contract.packageName, '@guoxiaoshuai2023/oh-my-harness');
+  assert.equal(contract.license, 'Apache-2.0');
   assert.equal(contract.binaryName, 'oh-my-harness');
   assert.equal(contract.binaryPath, 'bin/oh-my-harness.mjs');
   assert.equal(contract.nodeEngine, '>=24 <25');
@@ -36,7 +37,7 @@ test('package contract and schema fix the scoped stdlib-only release contract', 
   assert.deepEqual(contract.forbiddenCommandPatterns, ['npx oh-my-harness', '--package=oh-my-harness']);
   assert.ok(Object.values(contract.canonicalCommands).every((command) => command.includes('--package=')));
   assert.ok(Object.values(contract.canonicalCommands).every((command) => !command.includes('npx oh-my-harness')));
-  assert.deepEqual(contract.packageFiles, ['bin/oh-my-harness.mjs', 'src/installer/**', 'dist/**', 'README.md', 'package.json']);
+  assert.deepEqual(contract.packageFiles, ['bin/oh-my-harness.mjs', 'src/installer/**', 'dist/**', 'README.md', 'package.json', 'LICENSE']);
 });
 
 test('explicit map exactly matches the 42 accepted source and destination pairs', async () => {
