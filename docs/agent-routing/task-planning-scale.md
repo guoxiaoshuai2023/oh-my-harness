@@ -5,7 +5,7 @@ Read this doc when planning or revising `task-docs/` work, especially LOW semant
 ## Planning Scale
 
 - Prefer the smallest plan that produces a verifiable deliverable.
-- Under adaptive main-thread governance, select the smallest sufficient topology from task facts, risk, evidence needs, dependencies, and delegation value. Named roles and stages are optional when their controls are otherwise satisfied; triggered gates are not optional.
+- Under adaptive main-thread governance, select the smallest fact-required subset of nine optional capabilities from risk, evidence needs, dependencies, and invocation value. Capabilities are optional when their controls are otherwise satisfied; triggered gates are not optional.
 - Do not default to heavyweight compliance, audit, or multi-round process for ordinary low-risk work.
 - Increase process weight for high-impact actions, MEDIUM/HIGH semantic risk, broad cross-surface changes, irreversible actions, or external system writes.
 - Ordinary tasks should be short, executable, and verifiable: goal, boundary, key steps, acceptance criteria, evidence, and validation.
@@ -28,7 +28,8 @@ A task is a valid delivery unit when it produces at least one of:
 A task is not a delivery unit when it is only:
 
 - Plan review.
-- Contract review.
+- Technical Solution Design review.
+- Attempt-Boundary verification.
 - Result QA.
 - Compliance review.
 - Final acceptance.

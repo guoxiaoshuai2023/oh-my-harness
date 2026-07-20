@@ -1,21 +1,29 @@
+import { spawnSync } from 'node:child_process';
+import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   byteCompare, canonicalBytes, canonicalTarget, containedRootIdentity, ensureContainedParents,
-  exactGitOverlap, fingerprintContained, inspectContained, LifecycleError,
+  containedPath, exactGitOverlap, fingerprintContained, inspectContained, LifecycleError,
   linkContainedFile, payloadTempPath, pinContainedRoot, publishContainedFile, readContainedFile,
   removeContainedFile, removeEmptyContainedDirectory,
   sha256, writeAtomicContained, writeExclusiveContained,
 } from './filesystem.mjs';
 import { appendManagedBlock, removeManagedBlock, replaceManagedBlock, scanManagedBlock } from './markers.mjs';
 import {
-  AGENT_PATHS, BINARY_NAME, buildInstallState, operationId, PACKAGE_NAME,
-  managedDirectoryCandidates, parseInstallState, reconcileInstallStateInventory, releaseOwnedFiles,
+  AGENT_PATHS, BINARY_NAME, buildInstallState, classifyInstalledInventory, operationId, PACKAGE_NAME,
+  managedDirectoryCandidates, parseInstallState, parseOperationSentinel,
+  PRIOR_INVENTORY_CLASS, PRIOR_OBSOLETE_PATH,
+  reconcileInstallStateInventory, releaseOwnedFiles,
   SENTINEL_PATH, SENTINEL_TEMP_PATH,
-  sentinelDocument, STATE_PATH, STATE_TEMP_PATH, targetIdentity, validateInventory,
+  sentinelDocument, STATE_PATH, STATE_TEMP_PATH, TARGET_INVENTORY_CLASS, targetIdentity, validateInventory,
 } from './state.mjs';
 
 export const CONFLICT_CODES = [
   'UNMANAGED_NAMESPACE', 'UNOWNED_DESTINATION', 'INVALID_MANAGED_MARKER',
   'UNVERIFIABLE_INSTALL_STATE', 'INCOMPATIBLE_INSTALLATION', 'DIRTY_OVERLAP',
+  'PRIOR_IDENTITY_MISMATCH', 'OWNED_DRIFT', 'MISSING_OWNED_SURFACE',
+  'RECOVERY_IDENTITY_MISMATCH', 'RECOVERY_AMBIGUOUS', 'RECOVERY_REQUIRED',
   'UNSAFE_PATH', 'TARGET_CHANGED', 'IO_UNAVAILABLE',
 ];
 
@@ -30,6 +38,16 @@ function uniqueSorted(items, comparator = byteCompare) {
 }
 
 function conflictSort(left, right) {
+  const precedence = new Map([
+    ['UNSAFE_PATH', 1], ['IO_UNAVAILABLE', 1],
+    ['RECOVERY_IDENTITY_MISMATCH', 2], ['RECOVERY_AMBIGUOUS', 2], ['RECOVERY_REQUIRED', 2],
+    ['UNVERIFIABLE_INSTALL_STATE', 3], ['INCOMPATIBLE_INSTALLATION', 3],
+    ['PRIOR_IDENTITY_MISMATCH', 4], ['INVALID_MANAGED_MARKER', 5], ['MISSING_OWNED_SURFACE', 5],
+    ['OWNED_DRIFT', 7], ['UNOWNED_DESTINATION', 8], ['DIRTY_OVERLAP', 8],
+    ['UNMANAGED_NAMESPACE', 8], ['TARGET_CHANGED', 9],
+  ]);
+  const priority = (precedence.get(left.code) ?? 99) - (precedence.get(right.code) ?? 99);
+  if (priority) return priority;
   if (left.path === null && right.path !== null) return -1;
   if (left.path !== null && right.path === null) return 1;
   return byteCompare(left.path ?? '', right.path ?? '') || byteCompare(left.code, right.code);
@@ -60,6 +78,10 @@ function basePlan(operation, release) {
     operation,
     currentVersion: null,
     targetVersion: operation === 'uninstall' ? null : release.inventory.bundleVersion,
+    installedClass: null,
+    priorInventorySha256: null,
+    requestedInventorySha256: operation === 'uninstall' ? null : sha256(release.inventoryBytes),
+    recoveryAction: 'none',
     status: 'READY',
     creates: [], replaces: [], removes: [], protected: [], blockAction: 'none',
     modifiedManaged: [], backups: [], conflicts: [],
@@ -79,7 +101,8 @@ async function literalAgents(root) {
 }
 
 function backupPath(operationIdentifier, sourcePath) {
-  const suffix = sourcePath === 'AGENTS.md#managed-block' ? 'AGENTS.md.managed-block' : sourcePath;
+  const suffix = sourcePath === 'AGENTS.md#managed-block' ? 'AGENTS.md.managed-block'
+    : sourcePath === STATE_PATH ? `${STATE_PATH}.prior` : sourcePath;
   return `.oh-my-harness-backups/${operationIdentifier}/${suffix}`;
 }
 
@@ -158,10 +181,389 @@ function planPaths(plan, state, release) {
   ]);
 }
 
+async function recoveryConflictPlan(operation, root, release, code, safePath = SENTINEL_PATH) {
+  const plan = basePlan(operation, release);
+  plan.status = 'CONFLICT';
+  plan.recoveryAction = 'none';
+  plan.conflicts = [{ code, path: safePath }];
+  const envelope = planEnvelope(plan);
+  return {
+    plan, envelope,
+    context: {
+      root, release, state: null, stateBytes: null, oldBytes: new Map(), agents: await literalAgents(root),
+      operationId: null, fingerprints: new Map(), paths: [], modifiedBytes: new Map(),
+      rootIdentity: await containedRootIdentity(root), targetIdentity: targetIdentity(root), gitEvidence: null,
+    },
+  };
+}
+
+async function exactTargetClosure(root, release) {
+  try {
+    for (const [relativePath, expected] of release.files) {
+      if (!(await readContainedFile(root, relativePath)).equals(expected)) return false;
+    }
+    const agents = await literalAgents(root);
+    if (agents.scan.status !== 'owned-pair' || !agents.scan.interval.equals(release.managedBlock)) return false;
+    const stateBytes = await readContainedFile(root, STATE_PATH);
+    const state = parseInstallState(stateBytes, { canonicalRoot: root });
+    reconcileInstallStateInventory(state, release.inventory, release.inventoryBytes);
+    return state.installedVersion === release.inventory.bundleVersion;
+  } catch {
+    return false;
+  }
+}
+
+function parseRecoveryGitStatus(output) {
+  const rows = [];
+  for (const line of output.split('\n').filter(Boolean)) {
+    if (line.length < 4) throw new LifecycleError('Git status output was not parseable', {
+      code: 'IO_UNAVAILABLE', exitCode: 4, safePath: '.git',
+    });
+    const x = line[0];
+    const y = line[1];
+    const filePath = line.slice(3);
+    if (x === '?' && y === '?') rows.push({ path: filePath, state: 'untracked' });
+    else {
+      if (x !== ' ') rows.push({ path: filePath, state: x === 'D' ? 'deleted' : 'staged' });
+      if (y !== ' ') rows.push({ path: filePath, state: y === 'D' ? 'deleted' : 'unstaged' });
+    }
+  }
+  return rows.sort((left, right) => byteCompare(left.path, right.path) || byteCompare(left.state, right.state));
+}
+
+function safeRecoveryGitReference(value) {
+  const match = value.match(/^refs\/(heads|tags)\/(.+)$/);
+  if (!match) return false;
+  return match[2].split('/').every((segment) => /^[A-Za-z0-9._-]+$/.test(segment)
+    && segment !== '.' && !segment.includes('..') && !segment.endsWith('.') && !segment.endsWith('.lock'));
+}
+
+async function exactOriginalGitOverlap(root, paths, originalFiles) {
+  const current = await exactGitOverlap(root, paths);
+  if (!['clean', 'overlap'].includes(current.status)) {
+    return { status: current.status, paths: current.paths };
+  }
+  const executable = current.evidence?.executable;
+  if (typeof executable !== 'string') throw new LifecycleError('trusted Git evidence is unavailable', {
+    code: 'IO_UNAVAILABLE', exitCode: 4, safePath: '.git',
+  });
+  const head = (await readContainedFile(root, '.git/HEAD')).toString('ascii').trim();
+  let oid = null;
+  let reference = null;
+  let unborn = false;
+  if (/^[0-9a-f]{40}$/.test(head)) oid = head;
+  else if (head.startsWith('ref: ') && safeRecoveryGitReference(head.slice(5))) {
+    reference = head.slice(5);
+    const looseInfo = await inspectContained(root, `.git/${reference}`);
+    if (looseInfo.type === 'file') {
+      const value = (await readContainedFile(root, `.git/${reference}`)).toString('ascii').trim();
+      if (/^[0-9a-f]{40}$/.test(value)) oid = value;
+    } else if (looseInfo.type === 'absent') {
+      const packedInfo = await inspectContained(root, '.git/packed-refs');
+      const packed = packedInfo.type === 'file'
+        ? (await readContainedFile(root, '.git/packed-refs')).toString('ascii').split('\n') : [];
+      const matches = packed.filter((line) => line.endsWith(` ${reference}`));
+      if (matches.length === 1 && /^[0-9a-f]{40} /.test(matches[0])) oid = matches[0].slice(0, 40);
+      else if (matches.length === 0 && reference.startsWith('refs/heads/')) unborn = true;
+    }
+  }
+  if (!oid && !unborn) throw new LifecycleError('Git HEAD could not be reconstructed', {
+    code: 'IO_UNAVAILABLE', exitCode: 4, safePath: '.git/HEAD',
+  });
+
+  let temporaryRoot;
+  try {
+    temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'oh-my-harness-recovery-git-'));
+    const tempGit = path.join(temporaryRoot, 'git');
+    const shadow = path.join(temporaryRoot, 'shadow');
+    await mkdir(path.join(tempGit, 'objects', 'info'), { recursive: true });
+    await mkdir(path.join(tempGit, 'refs', 'heads'), { recursive: true });
+    await mkdir(shadow);
+    await writeFile(path.join(tempGit, 'HEAD'), unborn ? `ref: ${reference}\n` : `${oid}\n`, { flag: 'wx' });
+    const indexInfo = await inspectContained(root, '.git/index');
+    if (indexInfo.type === 'file') {
+      await writeFile(path.join(tempGit, 'index'), await readContainedFile(root, '.git/index'), { flag: 'wx' });
+    }
+    await writeFile(path.join(tempGit, 'config'), '[core]\n\trepositoryformatversion = 0\n\tbare = false\n\thooksPath = /dev/null\n', { flag: 'wx' });
+    await writeFile(path.join(tempGit, 'objects', 'info', 'alternates'), `${containedPath(root, '.git/objects')}\n`, { flag: 'wx' });
+    for (const [relativePath, file] of originalFiles) {
+      const destination = path.join(shadow, ...relativePath.split('/'));
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, file.bytes, { flag: 'wx', mode: file.mode });
+    }
+    const cleanEnv = [
+      `PATH=${path.dirname(executable)}`, `HOME=${path.join(temporaryRoot, 'home')}`,
+      `XDG_CONFIG_HOME=${path.join(temporaryRoot, 'xdg')}`,
+      'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_SYSTEM=/dev/null', 'GIT_CONFIG_NOSYSTEM=1',
+      'GIT_NO_REPLACE_OBJECTS=1', 'GIT_TERMINAL_PROMPT=0', 'GIT_PAGER=cat',
+      'GIT_OPTIONAL_LOCKS=0', 'GIT_LITERAL_PATHSPECS=1', 'LC_ALL=C',
+    ];
+    await mkdir(path.join(temporaryRoot, 'home'));
+    await mkdir(path.join(temporaryRoot, 'xdg'));
+    const args = [
+      '-i', ...cleanEnv, executable, '--no-optional-locks',
+      '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false',
+      '-c', 'core.untrackedCache=false', '-c', 'submodule.recurse=false',
+      '-c', 'status.submoduleSummary=false', '-c', 'diff.external=',
+      '-c', 'status.renames=false', `--git-dir=${tempGit}`, `--work-tree=${shadow}`,
+      'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=all', '--', ...paths,
+    ];
+    const child = spawnSync('/usr/bin/env', args, { encoding: 'utf8', cwd: temporaryRoot, env: {} });
+    if (child.status !== 0 || child.signal || child.error || child.stderr) {
+      throw new LifecycleError('original Git status could not be reconstructed', {
+        code: 'IO_UNAVAILABLE', exitCode: 4, safePath: '.git',
+      });
+    }
+    const overlap = parseRecoveryGitStatus(child.stdout);
+    return { status: overlap.length ? 'overlap' : 'clean', paths: overlap };
+  } finally {
+    if (temporaryRoot) {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      try {
+        await lstat(temporaryRoot);
+        throw new LifecycleError('temporary recovery Git view remains', {
+          code: 'IO_UNAVAILABLE', exitCode: 5, safePath: '.git',
+        });
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+  }
+}
+
+async function originalRecoveryPlanSha256({
+  operation, root, release, plan, priorState, priorStateBytes, agents,
+}) {
+  const originalPlan = structuredClone(plan);
+  originalPlan.recoveryAction = 'none';
+  originalPlan.protected = [];
+  if (agents.exists) originalPlan.protected.push('AGENTS.md');
+  if (priorState.backups.length) originalPlan.protected.push('.oh-my-harness-backups');
+  originalPlan.protected = uniqueSorted(originalPlan.protected);
+  const gitPaths = uniqueSorted([
+    ...release.files.keys(), ...priorState.ownedFiles.map((item) => item.path),
+    'AGENTS.md', STATE_PATH,
+  ]);
+  const backups = new Map(plan.backups.map((item) => [item.sourcePath, item]));
+  const originalFiles = new Map();
+  for (const item of priorState.ownedFiles) {
+    const current = await inspectContained(root, item.path);
+    let bytes;
+    let mode = 0o644;
+    if (current.type === 'file') {
+      const currentBytes = await readContainedFile(root, item.path);
+      if (sha256(currentBytes) === item.sha256) {
+        bytes = currentBytes;
+        mode = current.mode;
+      }
+    }
+    if (!bytes) {
+      const backup = backups.get(item.path);
+      if (!backup) throw new LifecycleError('original recovery bytes are unavailable', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: item.path,
+      });
+      bytes = await readContainedFile(root, backup.backupPath);
+    }
+    originalFiles.set(item.path, { bytes, mode });
+  }
+  let priorBlock = agents.scan.interval;
+  if (agents.scan.intervalSha256 !== priorState.agentsMd.blockSha256) {
+    const backup = backups.get('AGENTS.md#managed-block');
+    if (!backup) throw new LifecycleError('original managed block is unavailable', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+    });
+    priorBlock = await readContainedFile(root, backup.backupPath);
+  }
+  originalFiles.set('AGENTS.md', {
+    bytes: Buffer.concat([agents.scan.prefix, priorBlock, agents.scan.suffix]),
+    mode: agents.mode,
+  });
+  originalFiles.set(STATE_PATH, { bytes: priorStateBytes, mode: 0o600 });
+  const gitOverlap = await exactOriginalGitOverlap(root, gitPaths, originalFiles);
+  originalPlan.gitOverlap = {
+    status: gitOverlap.status,
+    paths: uniqueSorted(gitOverlap.paths, (left, right) => byteCompare(left.path, right.path)
+      || byteCompare(left.state, right.state)),
+  };
+  originalPlan.verification = VERIFICATION_ORDER.filter((item) => item !== 'backups'
+    || originalPlan.backups.length > 0)
+    .filter((item) => !(operation === 'uninstall'
+      && ['inventory', 'payload-hashes', 'profiles', 'references', 'state'].includes(item)));
+  return sha256(canonicalBytes(originalPlan));
+}
+
+async function createRecoveryPlan({ operation, root, release, sentinelBytes }) {
+  let sentinel;
+  try {
+    sentinel = parseOperationSentinel(sentinelBytes);
+  } catch {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  if (sentinel.operation !== operation || sentinel.targetIdentity !== targetIdentity(root)) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_REQUIRED');
+  }
+  const requestedInventorySha256 = operation === 'uninstall' ? null : sha256(release.inventoryBytes);
+  if (sentinel.requestedInventorySha256 !== requestedInventorySha256
+      || sentinel.requestedVersion !== (operation === 'uninstall' ? null : release.inventory.bundleVersion)) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  const stateBackupPath = backupPath(sentinel.operationId, STATE_PATH);
+  let priorStateBytes = null;
+  try {
+    const current = await inspectContained(root, STATE_PATH);
+    if (current.type === 'file') {
+      const bytes = await readContainedFile(root, STATE_PATH);
+      if (sha256(bytes) === sentinel.priorStateSha256) priorStateBytes = bytes;
+    }
+    if (!priorStateBytes) {
+      const backup = await readContainedFile(root, stateBackupPath);
+      if (sha256(backup) !== sentinel.priorStateSha256) throw new Error('state backup mismatch');
+      priorStateBytes = backup;
+    }
+  } catch {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS', STATE_PATH);
+  }
+  let priorState;
+  let priorInventoryBytes;
+  let priorInventory;
+  let installedClass;
+  try {
+    priorState = parseInstallState(priorStateBytes, { canonicalRoot: root });
+    const inventoryRecord = priorState.ownedFiles.find((item) => item.path === '.oh-my-harness/bundle-inventory.json');
+    if (!inventoryRecord || inventoryRecord.sha256 !== sentinel.priorInventorySha256) throw new Error('prior inventory state mismatch');
+    const currentInventory = await inspectContained(root, '.oh-my-harness/bundle-inventory.json');
+    if (currentInventory.type === 'file') {
+      const bytes = await readContainedFile(root, '.oh-my-harness/bundle-inventory.json');
+      if (sha256(bytes) === sentinel.priorInventorySha256) priorInventoryBytes = bytes;
+    }
+    if (!priorInventoryBytes) {
+      if (operation === 'uninstall' && sha256(release.inventoryBytes) === sentinel.priorInventorySha256) {
+        priorInventoryBytes = release.inventoryBytes;
+      } else {
+        priorInventoryBytes = await readContainedFile(root, backupPath(sentinel.operationId, '.oh-my-harness/bundle-inventory.json'));
+      }
+    }
+    if (sha256(priorInventoryBytes) !== sentinel.priorInventorySha256) throw new Error('prior inventory backup mismatch');
+    priorInventory = JSON.parse(priorInventoryBytes.toString('utf8'));
+    installedClass = classifyInstalledInventory(priorInventory, priorInventoryBytes);
+    reconcileInstallStateInventory(priorState, priorInventory, priorInventoryBytes);
+  } catch {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS', '.oh-my-harness/bundle-inventory.json');
+  }
+  const releaseOwned = releaseOwnedFiles(release.inventory, release.inventoryBytes);
+  const releaseByPath = new Map(releaseOwned.map((item) => [item.path, item]));
+  const priorByPath = new Map(priorState.ownedFiles.map((item) => [item.path, item]));
+  const plan = basePlan(operation, release);
+  plan.currentVersion = priorState.installedVersion;
+  plan.installedClass = installedClass;
+  plan.priorInventorySha256 = sha256(priorInventoryBytes);
+  plan.recoveryAction = 'restore-prior';
+  if (operation === 'update') {
+    plan.creates = releaseOwned.filter((item) => !priorByPath.has(item.path)).map((item) => item.path);
+    plan.replaces = releaseOwned.filter((item) => priorByPath.has(item.path)
+      && priorByPath.get(item.path).sha256 !== item.sha256).map((item) => item.path);
+    plan.removes = priorState.ownedFiles.filter((item) => !releaseByPath.has(item.path)).map((item) => item.path);
+    plan.blockAction = priorState.agentsMd.blockSha256 === release.inventory.managedBlock.sha256 ? 'none' : 'replace';
+  } else if (operation === 'uninstall') {
+    plan.removes = priorState.ownedFiles.map((item) => item.path);
+    plan.blockAction = 'remove';
+  } else {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS');
+  }
+  for (const relativePath of uniqueSorted(operation === 'update' ? [...plan.replaces, ...plan.removes] : [])) {
+    const item = priorByPath.get(relativePath);
+    plan.backups.push({ sourcePath: relativePath, backupPath: backupPath(sentinel.operationId, relativePath), sha256: item.sha256 });
+  }
+  if (plan.blockAction !== 'none') {
+    plan.backups.push({
+      sourcePath: 'AGENTS.md#managed-block', backupPath: backupPath(sentinel.operationId, 'AGENTS.md#managed-block'),
+      sha256: priorState.agentsMd.blockSha256,
+    });
+  }
+  plan.backups.push({ sourcePath: STATE_PATH, backupPath: stateBackupPath, sha256: sha256(priorStateBytes) });
+  plan.creates = uniqueSorted(plan.creates);
+  plan.replaces = uniqueSorted(plan.replaces);
+  plan.removes = uniqueSorted(plan.removes);
+  plan.backups = uniqueSorted(plan.backups, backupSort);
+  if (sha256(canonicalBytes(plan.backups)) !== sentinel.backupManifestSha256) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  const identifier = operationId({
+    operation, targetIdentity: targetIdentity(root), invokerVersion: release.inventory.bundleVersion,
+    installedVersion: priorState.installedVersion,
+    requestedVersion: operation === 'uninstall' ? null : release.inventory.bundleVersion,
+    priorInventorySha256: sha256(priorInventoryBytes), requestedInventorySha256,
+    managed: managedForOperation(priorState),
+  });
+  if (identifier !== sentinel.operationId) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  const agents = await literalAgents(root);
+  if (agents.scan.status !== 'owned-pair'
+      || agents.scan.prefix.length !== sentinel.outerPrefixLength
+      || sha256(agents.scan.prefix) !== sentinel.outerPrefixSha256
+      || sha256(agents.scan.suffix) !== sentinel.outerSuffixSha256) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS', 'AGENTS.md');
+  }
+  let originalPlanSha256;
+  try {
+    originalPlanSha256 = await originalRecoveryPlanSha256({
+      operation, root, release, plan, priorState, priorStateBytes, agents,
+    });
+  } catch (error) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS', error.safePath ?? '.git');
+  }
+  if (originalPlanSha256 !== sentinel.planSha256) {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  try {
+    await verifyBackups(root, plan.backups);
+    for (const relativePath of uniqueSorted([...plan.creates, ...plan.replaces, ...plan.removes])) {
+      const info = await inspectContained(root, relativePath);
+      if (info.type === 'absent') continue;
+      if (info.type !== 'file') throw new Error('unsafe type');
+      const digest = sha256(await readContainedFile(root, relativePath));
+      const priorDigest = priorByPath.get(relativePath)?.sha256;
+      const targetDigest = releaseByPath.get(relativePath)?.sha256;
+      if (digest !== priorDigest && digest !== targetDigest) throw new Error('third state');
+    }
+    if (agents.scan.intervalSha256 !== priorState.agentsMd.blockSha256
+        && agents.scan.intervalSha256 !== release.inventory.managedBlock.sha256) throw new Error('third block');
+  } catch {
+    return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS');
+  }
+  if (operation === 'update' && await exactTargetClosure(root, release)) plan.recoveryAction = 'finalize-target';
+  plan.protected = ['AGENTS.md', '.oh-my-harness-backups'];
+  plan.verification = [...VERIFICATION_ORDER];
+  const envelope = planEnvelope(plan);
+  const paths = planPaths(plan, priorState, release);
+  const fingerprints = await captureFingerprints(root, paths);
+  const oldBytes = new Map();
+  for (const item of priorState.ownedFiles) {
+    const row = plan.backups.find((backup) => backup.sourcePath === item.path);
+    if (row) oldBytes.set(item.path, await readContainedFile(root, row.backupPath));
+  }
+  return {
+    plan, envelope,
+    context: {
+      root, release, state: priorState, stateBytes: priorStateBytes, oldBytes, agents,
+      operationId: identifier, fingerprints, paths, modifiedBytes: new Map(),
+      rootIdentity: await containedRootIdentity(root), targetIdentity: targetIdentity(root), gitEvidence: null,
+      installedInventory: priorInventory, installedInventoryBytes: priorInventoryBytes, installedClass,
+      recoverySentinel: sentinel, expectedOuter: { prefix: agents.scan.prefix, suffix: agents.scan.suffix },
+    },
+  };
+}
+
 export async function createLifecyclePlan({ operation, target, release }) {
   if (!['install', 'update', 'uninstall'].includes(operation)) throw new LifecycleError('unsupported lifecycle operation');
   validateInventory(release.inventory, { packageVersion: release.inventory.bundleVersion });
   const root = await canonicalTarget(target);
+  const sentinelInfo = await inspectContained(root, SENTINEL_PATH);
+  if (sentinelInfo.type === 'file') {
+    return createRecoveryPlan({ operation, root, release, sentinelBytes: await readContainedFile(root, SENTINEL_PATH) });
+  }
+  if (sentinelInfo.type !== 'absent') return recoveryConflictPlan(operation, root, release, 'RECOVERY_AMBIGUOUS');
   const plan = basePlan(operation, release);
   const conflicts = [];
   const namespaceInfo = await inspectContained(root, '.oh-my-harness');
@@ -204,6 +606,9 @@ export async function createLifecyclePlan({ operation, target, release }) {
   }
 
   const oldBytes = new Map();
+  let installedInventory = null;
+  let installedInventoryBytes = null;
+  let installedClass = null;
   let surfaceMissing = false;
   if (state) {
     for (const item of state.ownedFiles) {
@@ -211,7 +616,7 @@ export async function createLifecyclePlan({ operation, target, release }) {
         const info = await inspectContained(root, item.path);
         if (info.type !== 'file') {
           surfaceMissing = true;
-          addConflict(conflicts, info.type === 'absent' ? 'UNVERIFIABLE_INSTALL_STATE' : 'UNSAFE_PATH', item.path);
+          addConflict(conflicts, info.type === 'absent' ? 'MISSING_OWNED_SURFACE' : 'UNSAFE_PATH', item.path);
         } else oldBytes.set(item.path, await readContainedFile(root, item.path));
       } catch (error) {
         surfaceMissing = true;
@@ -224,11 +629,11 @@ export async function createLifecyclePlan({ operation, target, release }) {
     }
     if (surfaceMissing) incomplete = true;
     const inventoryRecord = state.ownedFiles.find((item) => item.path === '.oh-my-harness/bundle-inventory.json');
-    const installedInventoryBytes = oldBytes.get('.oh-my-harness/bundle-inventory.json');
+    installedInventoryBytes = oldBytes.get('.oh-my-harness/bundle-inventory.json');
     if (inventoryRecord && installedInventoryBytes && sha256(installedInventoryBytes) === inventoryRecord.sha256) {
       try {
-        const installedInventory = JSON.parse(installedInventoryBytes.toString('utf8'));
-        validateInventory(installedInventory);
+        installedInventory = JSON.parse(installedInventoryBytes.toString('utf8'));
+        installedClass = classifyInstalledInventory(installedInventory, installedInventoryBytes);
         if (installedInventory.bundleVersion !== state.installedVersion) {
           throw new LifecycleError('installed inventory version disagrees with state', {
             code: 'INCOMPATIBLE_INSTALLATION', exitCode: 4,
@@ -243,11 +648,15 @@ export async function createLifecyclePlan({ operation, target, release }) {
       }
     }
   }
+  plan.installedClass = installedClass;
+  plan.priorInventorySha256 = installedInventoryBytes ? sha256(installedInventoryBytes) : null;
 
   const identifier = operationId({
     operation, targetIdentity: targetIdentity(root), invokerVersion: release.inventory.bundleVersion,
     installedVersion: state?.installedVersion ?? null,
     requestedVersion: operation === 'uninstall' ? null : release.inventory.bundleVersion,
+    priorInventorySha256: installedInventoryBytes ? sha256(installedInventoryBytes) : null,
+    requestedInventorySha256: operation === 'uninstall' ? null : sha256(release.inventoryBytes),
     managed: managedForOperation(state),
   });
 
@@ -283,6 +692,7 @@ export async function createLifecyclePlan({ operation, target, release }) {
   } else if (state && operation === 'update') {
     const modified = classifyStateSurface(state, oldBytes, agents);
     plan.modifiedManaged = modified;
+    for (const item of modified) addConflict(conflicts, 'OWNED_DRIFT', item.path);
     for (const item of releaseOwned) {
       const old = oldByPath.get(item.path);
       if (!old) {
@@ -298,6 +708,10 @@ export async function createLifecyclePlan({ operation, target, release }) {
       }
     }
     for (const item of state.ownedFiles) if (!releaseByPath.has(item.path)) plan.removes.push(item.path);
+    if (installedClass === PRIOR_INVENTORY_CLASS
+        && (plan.removes.length !== 1 || plan.removes[0] !== PRIOR_OBSOLETE_PATH)) {
+      addConflict(conflicts, 'PRIOR_IDENTITY_MISMATCH', '.oh-my-harness/bundle-inventory.json');
+    }
     const blockMatchesRelease = agents.scan.status === 'owned-pair'
       && agents.scan.intervalSha256 === release.inventory.managedBlock.sha256;
     plan.blockAction = blockMatchesRelease ? 'none' : 'replace';
@@ -306,13 +720,35 @@ export async function createLifecyclePlan({ operation, target, release }) {
     if (state.installedVersion === release.inventory.bundleVersion && cleanSurface && conflicts.length === 0) plan.status = 'NO_OP';
   } else if (state && operation === 'uninstall') {
     plan.modifiedManaged = classifyStateSurface(state, oldBytes, agents);
+    for (const item of plan.modifiedManaged) addConflict(conflicts, 'OWNED_DRIFT', item.path);
+    if (installedClass === PRIOR_INVENTORY_CLASS) addConflict(conflicts, 'INCOMPATIBLE_INSTALLATION', STATE_PATH);
     plan.removes = state.ownedFiles.map((item) => item.path);
     plan.blockAction = 'remove';
   }
 
-  for (const item of plan.modifiedManaged) {
-    const sourcePath = item.kind === 'managed-block' ? 'AGENTS.md#managed-block' : item.path;
-    plan.backups.push({ sourcePath, backupPath: backupPath(identifier, sourcePath), sha256: item.currentSha256 });
+  if (state && conflicts.length === 0 && plan.status !== 'NO_OP' && plan.modifiedManaged.length === 0
+      && ['update', 'uninstall'].includes(operation)) {
+    if (operation === 'update') {
+      for (const relativePath of uniqueSorted([...plan.replaces, ...plan.removes])) {
+        const bytes = oldBytes.get(relativePath);
+        if (bytes) {
+          plan.backups.push({
+            sourcePath: relativePath, backupPath: backupPath(identifier, relativePath), sha256: sha256(bytes),
+          });
+        }
+      }
+    }
+    if (plan.blockAction !== 'none' && agents.scan.status === 'owned-pair') {
+      plan.backups.push({
+        sourcePath: 'AGENTS.md#managed-block', backupPath: backupPath(identifier, 'AGENTS.md#managed-block'),
+        sha256: agents.scan.intervalSha256,
+      });
+    }
+    if (stateBytes) {
+      plan.backups.push({
+        sourcePath: STATE_PATH, backupPath: backupPath(identifier, STATE_PATH), sha256: sha256(stateBytes),
+      });
+    }
   }
   for (const backup of plan.backups) {
     try {
@@ -337,7 +773,10 @@ export async function createLifecyclePlan({ operation, target, release }) {
   if (plan.gitOverlap.status === 'unsafe-git-layout') addConflict(conflicts, 'IO_UNAVAILABLE', '.git');
   if (plan.gitOverlap.status === 'overlap') {
     const owned = new Set(state?.ownedFiles.map((item) => item.path) ?? []);
-    if (state) owned.add('AGENTS.md');
+    if (state) {
+      owned.add('AGENTS.md');
+      owned.add(STATE_PATH);
+    }
     for (const row of plan.gitOverlap.paths) if (!owned.has(row.path)) addConflict(conflicts, 'DIRTY_OVERLAP', row.path);
   }
 
@@ -359,14 +798,16 @@ export async function createLifecyclePlan({ operation, target, release }) {
   const fingerprints = await captureFingerprints(root, paths);
   const rootIdentity = await containedRootIdentity(root);
   const modifiedBytes = new Map();
-  for (const item of plan.modifiedManaged) {
-    if (item.kind === 'managed-block') modifiedBytes.set('AGENTS.md#managed-block', agents.scan.interval);
-    else modifiedBytes.set(item.path, oldBytes.get(item.path));
+  for (const item of plan.backups) {
+    if (item.sourcePath === 'AGENTS.md#managed-block') modifiedBytes.set(item.sourcePath, agents.scan.interval);
+    else if (item.sourcePath === STATE_PATH) modifiedBytes.set(item.sourcePath, stateBytes);
+    else modifiedBytes.set(item.sourcePath, oldBytes.get(item.sourcePath));
   }
   return {
     plan, envelope,
     context: {
       root, release, state, stateBytes, oldBytes, agents, operationId: identifier,
+      installedInventory, installedInventoryBytes, installedClass,
       fingerprints, paths, modifiedBytes, rootIdentity, targetIdentity: targetIdentity(root),
       gitEvidence,
     },
@@ -399,8 +840,14 @@ async function createSentinel(context, envelope, operation, trigger) {
   const document = sentinelDocument({
     operationId: id, operation, targetIdentity: context.targetIdentity,
     priorStateSha256: stateBytes ? sha256(stateBytes) : null,
+    priorInventorySha256: context.installedInventoryBytes ? sha256(context.installedInventoryBytes) : null,
+    requestedInventorySha256: operation === 'uninstall' ? null : sha256(release.inventoryBytes),
     requestedVersion: operation === 'uninstall' ? null : release.inventory.bundleVersion,
     planSha256: envelope.planSha256,
+    backupManifestSha256: sha256(canonicalBytes(envelope.plan.backups)),
+    outerPrefixLength: context.agents.scan.prefix?.length ?? context.agents.bytes.length,
+    outerPrefixSha256: sha256(context.agents.scan.prefix ?? context.agents.bytes),
+    outerSuffixSha256: sha256(context.agents.scan.suffix ?? Buffer.alloc(0)),
   });
   const bytes = canonicalBytes(document);
   try {
@@ -513,6 +960,224 @@ async function retainSentinel(context, sentinelBytes) {
   if (info.type === 'absent') await writeExclusiveContained(context.root, SENTINEL_PATH, sentinelBytes, { mode: 0o600 });
 }
 
+async function removeIfExact(root, relativePath, expectedBytes, trigger, changed) {
+  const info = await inspectContained(root, relativePath);
+  if (info.type === 'absent') return;
+  if (info.type !== 'file' || !(await readContainedFile(root, relativePath)).equals(expectedBytes)) {
+    throw new LifecycleError('rollback found an ambiguous third-state path', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: relativePath,
+    });
+  }
+  trigger(`rollback-delete:${relativePath}`, relativePath);
+  await removeContainedFile(root, relativePath, { onMutation: () => changed.push(relativePath) });
+}
+
+async function restoreExact(root, relativePath, priorBytes, targetBytes, trigger, changed) {
+  const info = await inspectContained(root, relativePath);
+  if (info.type === 'file') {
+    const current = await readContainedFile(root, relativePath);
+    if (current.equals(priorBytes)) return;
+    if (!targetBytes || !current.equals(targetBytes)) {
+      throw new LifecycleError('rollback found an ambiguous third-state path', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: relativePath,
+      });
+    }
+    trigger(`rollback-write:${relativePath}`, relativePath);
+    await writeAtomicContained(root, relativePath, priorBytes, {
+      replace: true, onMutation: () => changed.push(relativePath),
+    });
+    return;
+  }
+  if (info.type !== 'absent') {
+    throw new LifecycleError('rollback found an unsafe path type', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: relativePath,
+    });
+  }
+  trigger(`rollback-write:${relativePath}`, relativePath);
+  await writeAtomicContained(root, relativePath, priorBytes, {
+    replace: false, onMutation: () => changed.push(relativePath),
+  });
+}
+
+async function verifyPriorSurface(context) {
+  if (!context.state || !context.stateBytes || !context.installedInventory || !context.installedInventoryBytes) return;
+  const parsed = parseInstallState(await readContainedFile(context.root, STATE_PATH), { canonicalRoot: context.root });
+  reconcileInstallStateInventory(parsed, context.installedInventory, context.installedInventoryBytes);
+  for (const item of parsed.ownedFiles) {
+    if (sha256(await readContainedFile(context.root, item.path)) !== item.sha256) {
+      throw new LifecycleError('prior payload restoration did not verify', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: item.path,
+      });
+    }
+  }
+  const agents = await literalAgents(context.root);
+  if (agents.scan.status !== 'owned-pair' || agents.scan.intervalSha256 !== parsed.agentsMd.blockSha256
+      || !agents.scan.prefix.equals(context.expectedOuter.prefix)
+      || !agents.scan.suffix.equals(context.expectedOuter.suffix)) {
+    throw new LifecycleError('prior managed block restoration did not verify', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+    });
+  }
+}
+
+async function rollbackTransition(context, plan, trigger, changed) {
+  const root = context.root;
+  trigger('rollback-start', SENTINEL_PATH);
+  if (plan.operation === 'install') {
+    for (const relativePath of [...plan.creates].reverse()) {
+      if (relativePath !== 'AGENTS.md') await removeIfExact(root, relativePath, context.release.files.get(relativePath), trigger, changed);
+    }
+    const agents = await literalAgents(root);
+    if (agents.scan.status === 'owned-pair' && agents.scan.interval.equals(context.release.managedBlock)) {
+      const restored = Buffer.concat([context.expectedOuter.prefix, context.expectedOuter.suffix]);
+      if (!context.agents.exists && restored.length === 0) {
+        await removeContainedFile(root, 'AGENTS.md', { onMutation: () => changed.push('AGENTS.md') });
+      } else {
+        await writeAtomicContained(root, 'AGENTS.md', restored, {
+          replace: true, mode: context.agents.mode, onMutation: () => changed.push('AGENTS.md'),
+        });
+      }
+    } else if (!agents.bytes.equals(context.agents.bytes)) {
+      throw new LifecycleError('install rollback found ambiguous AGENTS.md bytes', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+      });
+    }
+    if ((await inspectContained(root, STATE_PATH)).type === 'file') {
+      const state = await readContainedFile(root, STATE_PATH);
+      const parsed = parseInstallState(state, { canonicalRoot: root });
+      if (parsed.operation.id !== context.operationId) {
+        throw new LifecycleError('install rollback found unrelated state', {
+          code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: STATE_PATH,
+        });
+      }
+      await removeContainedFile(root, STATE_PATH, { onMutation: () => changed.push(STATE_PATH) });
+    }
+  } else if (plan.operation === 'update') {
+    await verifyBackups(root, plan.backups);
+    const bySource = new Map(plan.backups.map((item) => [item.sourcePath, item]));
+    for (const relativePath of [...plan.creates].reverse()) {
+      await removeIfExact(root, relativePath, context.release.files.get(relativePath), trigger, changed);
+    }
+    for (const relativePath of uniqueSorted([...plan.replaces, ...plan.removes])) {
+      const backup = bySource.get(relativePath);
+      if (!backup) throw new LifecycleError('required rollback backup is missing', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: relativePath,
+      });
+      await restoreExact(root, relativePath, await readContainedFile(root, backup.backupPath),
+        context.release.files.get(relativePath), trigger, changed);
+    }
+    if (plan.blockAction === 'replace') {
+      const backup = bySource.get('AGENTS.md#managed-block');
+      if (!backup) throw new LifecycleError('managed block rollback backup is missing', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+      });
+      const priorBlock = await readContainedFile(root, backup.backupPath);
+      const agents = await literalAgents(root);
+      if (!agents.scan.prefix.equals(context.expectedOuter.prefix) || !agents.scan.suffix.equals(context.expectedOuter.suffix)) {
+        throw new LifecycleError('outer AGENTS.md bytes changed during rollback', {
+          code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+        });
+      }
+      if (!agents.scan.interval.equals(priorBlock)) {
+        if (!agents.scan.interval.equals(context.release.managedBlock)) {
+          throw new LifecycleError('managed block is in a third state', {
+            code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: 'AGENTS.md',
+          });
+        }
+        await writeAtomicContained(root, 'AGENTS.md', replaceManagedBlock(agents.bytes, priorBlock), {
+          replace: true, mode: agents.mode, onMutation: () => changed.push('AGENTS.md'),
+        });
+      }
+    }
+    const stateBackup = bySource.get(STATE_PATH);
+    if (!stateBackup) throw new LifecycleError('prior state rollback backup is missing', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: STATE_PATH,
+    });
+    context.stateBytes = await readContainedFile(root, stateBackup.backupPath);
+    await restoreOldState(context, trigger);
+    await verifyPriorSurface(context);
+  } else {
+    await verifyBackups(root, plan.backups);
+    for (const item of context.state.ownedFiles) {
+      await restoreExact(root, item.path, context.release.files.get(item.path), context.release.files.get(item.path), trigger, changed);
+    }
+    const backup = plan.backups.find((item) => item.sourcePath === 'AGENTS.md#managed-block');
+    if (backup) {
+      const priorBlock = await readContainedFile(root, backup.backupPath);
+      const agents = await literalAgents(root);
+      if (agents.scan.status === 'absent') {
+        await writeAtomicContained(root, 'AGENTS.md', Buffer.concat([
+          context.expectedOuter.prefix, priorBlock, context.expectedOuter.suffix,
+        ]), { replace: agents.exists, mode: context.agents.mode, onMutation: () => changed.push('AGENTS.md') });
+      }
+    }
+    const stateBackup = plan.backups.find((item) => item.sourcePath === STATE_PATH);
+    if (!stateBackup) throw new LifecycleError('prior state rollback backup is missing', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: STATE_PATH,
+    });
+    context.stateBytes = await readContainedFile(root, stateBackup.backupPath);
+    await restoreOldState(context, trigger);
+    await verifyPriorSurface(context);
+  }
+  for (const tempPath of [SENTINEL_TEMP_PATH, STATE_TEMP_PATH, ...context.paths.map(payloadTempPath)]) {
+    if ((await inspectContained(root, tempPath)).type === 'file') await removeContainedFile(root, tempPath);
+  }
+  if ((await inspectContained(root, SENTINEL_PATH)).type === 'file') {
+    trigger('rollback-sentinel-delete', SENTINEL_PATH);
+    await removeContainedFile(root, SENTINEL_PATH, { onMutation: () => changed.push(SENTINEL_PATH) });
+  }
+  if (plan.operation === 'install') {
+    const candidates = [...context.createdDirectories]
+      .sort((left, right) => right.split('/').length - left.split('/').length || byteCompare(right, left));
+    for (const directory of candidates) await removeEmptyContainedDirectory(root, directory);
+  }
+}
+
+async function applyRecoveryPlan(context, plan, trigger) {
+  const changed = [];
+  const temporary = [];
+  const directories = { removed: [], preserved: [] };
+  context.createdDirectories = new Set(context.state?.managedDirectories ?? []);
+  if (plan.recoveryAction === 'finalize-target') {
+    if (!await exactTargetClosure(context.root, context.release)) {
+      throw new LifecycleError('target closure changed before recovery finalization', {
+        code: 'RECOVERY_AMBIGUOUS', exitCode: 5,
+      });
+    }
+    await verifyBackups(context.root, plan.backups);
+    for (const tempPath of [SENTINEL_TEMP_PATH, STATE_TEMP_PATH, ...context.paths.map(payloadTempPath)]) {
+      const info = await inspectContained(context.root, tempPath);
+      if (info.type === 'file') {
+        trigger(`recovery-temp-delete:${tempPath}`, tempPath);
+        await removeContainedFile(context.root, tempPath, { onMutation: () => changed.push(tempPath) });
+      } else if (info.type !== 'absent') {
+        throw new LifecycleError('recovery temporary path is ambiguous', {
+          code: 'RECOVERY_AMBIGUOUS', exitCode: 5, safePath: tempPath,
+        });
+      }
+    }
+    trigger('recovery-sentinel-delete', SENTINEL_PATH);
+    await removeContainedFile(context.root, SENTINEL_PATH, { onMutation: () => changed.push(SENTINEL_PATH) });
+    if ((await inspectContained(context.root, SENTINEL_PATH)).type !== 'absent') {
+      throw new LifecycleError('recovery sentinel deletion did not verify', { safePath: SENTINEL_PATH });
+    }
+    const report = resultReport(plan, changed, temporary, 'absent', 'verified', plan.backups, directories);
+    report.recoveryOutcome = 'target-finalized';
+    report.updateApplied = true;
+    return { exitCode: 0, report };
+  }
+  if (plan.recoveryAction !== 'restore-prior') {
+    throw new LifecycleError('recovery action is unavailable', {
+      code: 'RECOVERY_AMBIGUOUS', exitCode: 5,
+    });
+  }
+  await rollbackTransition(context, plan, trigger, changed);
+  const report = resultReport(plan, changed, temporary, 'absent', 'prior-restored', plan.backups, directories);
+  report.recoveryOutcome = 'prior-restored';
+  report.updateApplied = false;
+  return { exitCode: 0, report };
+}
+
 async function recheckPlan(original, target, release) {
   const fresh = await createLifecyclePlan({ operation: original.plan.operation, target, release });
   const originalBytes = canonicalBytes(original.plan);
@@ -529,7 +1194,7 @@ async function recheckPlan(original, target, release) {
 }
 
 function resultReport(plan, changed, temporary, sentinel, state, backups, directories, error = null, {
-  unverifiedBackups = [], preservationFailure = null,
+  unverifiedBackups = [], preservationFailure = null, recoveryOutcome = null,
 } = {}) {
   const changedSet = new Set(changed);
   const planned = uniqueSorted([...plan.creates, ...plan.replaces, ...plan.removes, ...(plan.blockAction !== 'none' ? ['AGENTS.md'] : [])]);
@@ -546,6 +1211,9 @@ function resultReport(plan, changed, temporary, sentinel, state, backups, direct
       preserved: uniqueSorted(directories.preserved),
     },
     preservationFailure,
+    recoveryOutcome,
+    recoveryAction: plan.recoveryAction ?? 'none',
+    updateApplied: plan.operation === 'update' ? error === null : null,
     error: error ? { path: error.safePath ?? null, reason: error.message } : null,
   };
 }
@@ -575,6 +1243,13 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
   const { plan, envelope, context } = fresh;
   const releaseRootPin = await pinContainedRoot(context.root, context.rootIdentity);
   const trigger = faultController(faults);
+  if (plan.recoveryAction !== 'none') {
+    try {
+      return await applyRecoveryPlan(context, plan, trigger);
+    } finally {
+      releaseRootPin();
+    }
+  }
   const changed = [];
   const temporary = [];
   const createdBackups = [];
@@ -697,19 +1372,31 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
   } catch (error) {
     const failure = error instanceof LifecycleError ? error : new LifecycleError('lifecycle write or verification failed');
     let preservationFailure = null;
+    let recoveryOutcome = null;
     try {
       if (!committed) {
-        const currentStateInfo = await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'absent' }));
-        if (plan.operation === 'install' && currentStateInfo.type === 'file') {
-          trigger('state-delete-after-failure', STATE_PATH);
-          await removeContainedFile(context.root, STATE_PATH);
-        } else if (plan.operation === 'update' && currentStateInfo.type === 'file') {
-          const currentStateBytes = await readContainedFile(context.root, STATE_PATH);
-          if (!currentStateBytes.equals(context.stateBytes)) await restoreOldState(context, trigger);
-        } else if (plan.operation === 'uninstall' && oldStateDeleted) {
-          await restoreOldState(context, trigger);
+        const physicalSentinel = await inspectContained(context.root, SENTINEL_PATH).catch(() => ({ type: 'absent' }));
+        if (physicalSentinel.type === 'file') {
+          for (const tempPath of [SENTINEL_TEMP_PATH, STATE_TEMP_PATH, ...context.paths.map(payloadTempPath)]) {
+            if ((await inspectContained(context.root, tempPath).catch(() => ({ type: 'absent' }))).type === 'file') {
+              await removeContainedFile(context.root, tempPath);
+            }
+          }
+          await rollbackTransition(context, plan, trigger, changed);
+          recoveryOutcome = 'prior-restored';
+        } else {
+          const currentStateInfo = await inspectContained(context.root, STATE_PATH).catch(() => ({ type: 'absent' }));
+          if (plan.operation === 'install' && currentStateInfo.type === 'file') {
+            trigger('state-delete-after-failure', STATE_PATH);
+            await removeContainedFile(context.root, STATE_PATH);
+          } else if (plan.operation === 'update' && currentStateInfo.type === 'file') {
+            const currentStateBytes = await readContainedFile(context.root, STATE_PATH);
+            if (!currentStateBytes.equals(context.stateBytes)) await restoreOldState(context, trigger);
+          } else if (plan.operation === 'uninstall' && oldStateDeleted) {
+            await restoreOldState(context, trigger);
+          }
+          if (sentinelBytes) await retainSentinel(context, sentinelBytes);
         }
-        if (sentinelBytes) await retainSentinel(context, sentinelBytes);
       }
     } catch (restoreError) {
       failure.message = `${failure.message}; state preservation failed`;
@@ -748,7 +1435,7 @@ export async function applyLifecyclePlan({ planned, target, release, faults = []
     }
     failure.report = resultReport(plan, changed, temporary, sentinelState, stateState,
       backupEvidence.verified, directories, failure, {
-        unverifiedBackups: backupEvidence.unverified, preservationFailure,
+        unverifiedBackups: backupEvidence.unverified, preservationFailure, recoveryOutcome,
       });
     throw failure;
   } finally {

@@ -8,6 +8,11 @@ import {
   assertRuntimeReferenceClosure,
   buildBundle,
 } from '../../src/bundle/compiler.mjs';
+import {
+  TARGET_PROJECTION_SHA256,
+  TARGET_REQUIRED_PROJECTION_SHA256,
+  bundleProjection,
+} from '../../src/bundle/validation.mjs';
 import { EXPECTED_PAIRS } from './expected-data.mjs';
 import {
   ROOT,
@@ -40,18 +45,36 @@ test('package contract and schema fix the scoped stdlib-only release contract', 
   assert.deepEqual(contract.packageFiles, ['bin/oh-my-harness.mjs', 'src/installer/**', 'dist/**', 'README.md', 'package.json', 'LICENSE']);
 });
 
-test('explicit map exactly matches the 42 accepted source and destination pairs', async () => {
+test('explicit map exactly matches the 49 accepted source and destination pairs', async () => {
   const map = await readJson('packaging/bundle-map.json');
-  assert.equal(map.entries.length, 42);
+  assert.equal(map.entries.length, 49);
   assert.deepEqual(map.entries.map(({ source, destination }) => [source, destination]), EXPECTED_PAIRS);
   assert.ok(map.entries.every(({ required }) => required === true));
-  assert.equal(new Set(map.entries.map(({ assetId }) => assetId)).size, 42);
-  assert.equal(new Set(map.entries.map(({ destination }) => destination)).size, 42);
-  assert.equal(map.rewrites.length, 59);
+  assert.equal(new Set(map.entries.map(({ assetId }) => assetId)).size, 49);
+  assert.equal(new Set(map.entries.map(({ destination }) => destination)).size, 49);
+  assert.equal(map.rewrites.length, 69);
+  assert.equal(createHash('sha256').update(bundleProjection(map.entries)).digest('hex'), TARGET_PROJECTION_SHA256);
+  assert.equal(createHash('sha256').update(bundleProjection(map.entries, true)).digest('hex'), TARGET_REQUIRED_PROJECTION_SHA256);
+  assert.deepEqual(map.entries.reduce((counts, { kind }) => {
+    counts[kind] = (counts[kind] ?? 0) + 1;
+    return counts;
+  }, {}), {
+    documentation: 12,
+    'adapter-config': 1,
+    example: 2,
+    protocol: 3,
+    template: 17,
+    calibration: 2,
+    'python-helper': 3,
+    'agent-profile': 9,
+  });
+  assert.equal(map.entries.some(({ assetId }) => assetId === 'template/task-contract'), false);
   assert.deepEqual(map.calibrationBinding.dependentAssetIds, [
+    'agent/requirements-evaluator',
     'agent/plan-evaluator',
     'agent/solution-evaluator',
     'agent/result-evaluator',
+    'agent/orchestration-reviewer',
     'calibration/adaptive-orchestration-acceptance-matrix',
     'template/orchestration-prompt',
     'template/plan-review',
@@ -150,17 +173,17 @@ test('two clean builds are byte-for-byte deterministic with a closed inventory',
   const firstHashes = await treeHashes(first.outputDir);
   const secondHashes = await treeHashes(second.outputDir);
   assert.deepEqual(firstHashes, secondHashes);
-  assert.equal(firstHashes.length, 44);
+  assert.equal(firstHashes.length, 51);
   const inventoryPath = path.join(first.outputDir, '.oh-my-harness/bundle-inventory.json');
   const inventoryBytes = await readFile(inventoryPath);
   const secondInventoryBytes = await readFile(path.join(second.outputDir, '.oh-my-harness/bundle-inventory.json'));
   assert.deepEqual(inventoryBytes, secondInventoryBytes);
   const inventory = JSON.parse(inventoryBytes);
   assert.equal(inventory.bundleVersion, '0.0.0-task1');
-  assert.equal(inventory.requiredFiles.length, 42);
+  assert.equal(inventory.requiredFiles.length, 49);
   assert.deepEqual(inventory.optionalFiles, []);
-  assert.equal(inventory.ownership.payloadPaths.length, 42);
-  assert.equal(inventory.ownership.agentPaths.length, 6);
+  assert.equal(inventory.ownership.payloadPaths.length, 49);
+  assert.equal(inventory.ownership.agentPaths.length, 9);
   assert.equal(inventory.managedBlock.assetPath, '.oh-my-harness/managed-router-block.md');
   assert.ok(inventory.requiredFiles.every(({ sourceSha256, destinationSha256 }) => /^[0-9a-f]{64}$/.test(sourceSha256) && /^[0-9a-f]{64}$/.test(destinationSha256)));
   assert.ok(!inventory.ownership.payloadPaths.includes('.oh-my-harness/bundle-inventory.json'));
@@ -180,12 +203,22 @@ test('negative contract, map, schema, source-reference, and collision fixtures f
       const map = await readJson('packaging/bundle-map.json', fixture);
       map.entries[1].destination = map.entries[0].destination;
       await writeJson('packaging/bundle-map.json', map, fixture);
-    }, /duplicate asset, source, or destination|rewrite table/],
+    }, /bundle map has a duplicate asset, source, or destination/],
+    ['duplicate source', async (fixture) => {
+      const map = await readJson('packaging/bundle-map.json', fixture);
+      map.entries[1].source = map.entries[0].source;
+      await writeJson('packaging/bundle-map.json', map, fixture);
+    }, /bundle map has a duplicate asset, source, or destination/],
+    ['duplicate asset ID', async (fixture) => {
+      const map = await readJson('packaging/bundle-map.json', fixture);
+      map.entries[1].assetId = map.entries[0].assetId;
+      await writeJson('packaging/bundle-map.json', map, fixture);
+    }, /bundle map has a duplicate asset, source, or destination/],
     ['missing map entry', async (fixture) => {
       const map = await readJson('packaging/bundle-map.json', fixture);
       map.entries.pop();
       await writeJson('packaging/bundle-map.json', map, fixture);
-    }, /exactly 42 entries/],
+    }, /exactly 49 entries/],
     ['extra map entry', async (fixture) => {
       const map = await readJson('packaging/bundle-map.json', fixture);
       map.entries.push({
@@ -195,12 +228,27 @@ test('negative contract, map, schema, source-reference, and collision fixtures f
         destination: '.oh-my-harness/unexpected/extra.md',
       });
       await writeJson('packaging/bundle-map.json', map, fixture);
-    }, /exactly 42 entries/],
+    }, /exactly 49 entries/],
     ['unsafe destination', async (fixture) => {
       const map = await readJson('packaging/bundle-map.json', fixture);
       map.entries[0].destination = '../escape.md';
       await writeJson('packaging/bundle-map.json', map, fixture);
     }, /safe relative POSIX path|normalized relative path/],
+    ['unnormalized source', async (fixture) => {
+      const map = await readJson('packaging/bundle-map.json', fixture);
+      map.entries[0].source = 'docs/../README.md';
+      await writeJson('packaging/bundle-map.json', map, fixture);
+    }, /bundle map entry 0 source must be a normalized relative path/],
+    ['structurally valid wrong tuple', async (fixture) => {
+      const map = await readJson('packaging/bundle-map.json', fixture);
+      map.entries[0].source = 'README-replaced.md';
+      await writeJson('packaging/bundle-map.json', map, fixture);
+    }, /bundle map exact target projection mismatch/],
+    ['structurally valid wrong order', async (fixture) => {
+      const map = await readJson('packaging/bundle-map.json', fixture);
+      [map.entries[0], map.entries[1]] = [map.entries[1], map.entries[0]];
+      await writeJson('packaging/bundle-map.json', map, fixture);
+    }, /bundle map exact target projection mismatch/],
     ['malformed schema contract', async (fixture) => {
       const schema = await readJson('packaging/schemas/package-contract.schema.json', fixture);
       schema.type = 'array';
@@ -217,11 +265,13 @@ test('negative contract, map, schema, source-reference, and collision fixtures f
     const fixture = await createFixture(t);
     await mutate(fixture);
     const base = await temporaryDirectory(t);
+    const outputDir = path.join(base, name.replaceAll(' ', '-'));
     await assert.rejects(
-      buildBundle({ rootDir: fixture, outputDir: path.join(base, name.replaceAll(' ', '-')), version: '0.0.0-task1' }),
+      buildBundle({ rootDir: fixture, outputDir, version: '0.0.0-task1' }),
       expected,
       name,
     );
+    await assert.rejects(stat(outputDir), (error) => error.code === 'ENOENT', `${name} created an output root`);
   }
 
   const base = await temporaryDirectory(t);

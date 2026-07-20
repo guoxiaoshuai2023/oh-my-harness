@@ -17,12 +17,29 @@ export const OPERATION_ID_PATTERN = /^[0-9a-f]{24}$/;
 export const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 export const AGENT_PATHS = [
   '.codex/agents/oh-my-harness-executor.toml',
+  '.codex/agents/oh-my-harness-orchestration-reviewer.toml',
+  '.codex/agents/oh-my-harness-plan-evaluator.toml',
+  '.codex/agents/oh-my-harness-planner.toml',
+  '.codex/agents/oh-my-harness-requirements-author.toml',
+  '.codex/agents/oh-my-harness-requirements-evaluator.toml',
+  '.codex/agents/oh-my-harness-result-evaluator.toml',
+  '.codex/agents/oh-my-harness-solution-designer.toml',
+  '.codex/agents/oh-my-harness-solution-evaluator.toml',
+].sort(byteCompare);
+export const PRIOR_AGENT_PATHS = [
+  '.codex/agents/oh-my-harness-executor.toml',
   '.codex/agents/oh-my-harness-plan-evaluator.toml',
   '.codex/agents/oh-my-harness-planner.toml',
   '.codex/agents/oh-my-harness-result-evaluator.toml',
   '.codex/agents/oh-my-harness-solution-designer.toml',
   '.codex/agents/oh-my-harness-solution-evaluator.toml',
 ].sort(byteCompare);
+export const PRIOR_INVENTORY_SHA256 = 'e83fd6f8a226206d3b1b1e4c48463e4d738d32d98349944225e074975bed8bcb';
+export const PRIOR_MANAGED_BLOCK_SHA256 = '68ca465a5bc3999671ee9cacb1a3dc8e170aae92237bcb4b680b4baadffeb1c8';
+export const PRIOR_OBSOLETE_PATH = '.oh-my-harness/templates/task-contract-template.md';
+export const PRIOR_OBSOLETE_SHA256 = '0b426b1cae5aae3bb62169684467168737840d3ef4359f1070ea77e0a4bc1b55';
+export const PRIOR_INVENTORY_CLASS = 'prior-six-42';
+export const TARGET_INVENTORY_CLASS = 'target-nine-49';
 
 function conflict(message, safePath = null, code = 'UNVERIFIABLE_INSTALL_STATE') {
   throw new LifecycleError(message, { code, exitCode: 4, safePath });
@@ -53,7 +70,10 @@ export function targetIdentity(canonicalRoot) {
   return sha256(Buffer.from(canonicalRoot, 'utf8'));
 }
 
-export function operationId({ operation, targetIdentity: identity, invokerVersion, installedVersion, requestedVersion, managed }) {
+export function operationId({
+  operation, targetIdentity: identity, invokerVersion, installedVersion, requestedVersion,
+  priorInventorySha256 = null, requestedInventorySha256 = null, managed,
+}) {
   const preimage = {
     schemaVersion: 1,
     operation,
@@ -61,13 +81,15 @@ export function operationId({ operation, targetIdentity: identity, invokerVersio
     invokerVersion,
     installedVersion,
     requestedVersion,
+    priorInventorySha256,
+    requestedInventorySha256,
     managed: [...managed].sort((left, right) => byteCompare(left.path, right.path)
       || byteCompare(left.kind, right.kind)),
   };
   return createHash('sha256').update(canonicalPreimageBytes(preimage)).digest('hex').slice(0, 24);
 }
 
-export function validateInventory(inventory, { packageVersion = null } = {}) {
+function validateInventoryForAgents(inventory, { packageVersion = null, agentPaths = AGENT_PATHS } = {}) {
   assertExactKeys(inventory, [
     'schemaVersion', 'bundleVersion', 'packageName', 'binaryName', 'nodeEngine',
     'installerCompatibility', 'requiredFiles', 'optionalFiles', 'managedBlock',
@@ -121,7 +143,7 @@ export function validateInventory(inventory, { packageVersion = null } = {}) {
   }
   assertExactKeys(inventory.ownership, ['payloadPaths', 'agentPaths', 'managedBlockId'], 'inventory ownership');
   if (JSON.stringify(inventory.ownership.payloadPaths) !== JSON.stringify(paths)
-      || JSON.stringify(inventory.ownership.agentPaths) !== JSON.stringify(AGENT_PATHS)
+      || JSON.stringify(inventory.ownership.agentPaths) !== JSON.stringify(agentPaths)
       || inventory.ownership.managedBlockId !== 'oh-my-harness') {
     conflict('bundle inventory ownership is inconsistent');
   }
@@ -130,6 +152,30 @@ export function validateInventory(inventory, { packageVersion = null } = {}) {
     conflict('bundle inventory reference policy is incompatible');
   }
   return inventory;
+}
+
+export function validateInventory(inventory, { packageVersion = null } = {}) {
+  return validateInventoryForAgents(inventory, { packageVersion, agentPaths: AGENT_PATHS });
+}
+
+export function classifyInstalledInventory(inventory, inventoryBytes) {
+  const bytes = Buffer.from(inventoryBytes);
+  const digest = sha256(bytes);
+  if (digest !== PRIOR_INVENTORY_SHA256) {
+    validateInventory(inventory);
+    return TARGET_INVENTORY_CLASS;
+  }
+  validateInventoryForAgents(inventory, { agentPaths: PRIOR_AGENT_PATHS });
+  const obsolete = inventory.requiredFiles.filter((item) => item.destinationPath === PRIOR_OBSOLETE_PATH);
+  if (inventory.requiredFiles.length !== 42 || inventory.managedBlock.sha256 !== PRIOR_MANAGED_BLOCK_SHA256
+      || obsolete.length !== 1 || obsolete[0].assetId !== 'template/task-contract'
+      || obsolete[0].sourcePath !== 'task-docs/_harness/templates/task-contract-template.md'
+      || obsolete[0].sourceSha256 !== PRIOR_OBSOLETE_SHA256
+      || obsolete[0].destinationSha256 !== PRIOR_OBSOLETE_SHA256
+      || obsolete[0].required !== true || obsolete[0].kind !== 'template') {
+    conflict('prior installation identity is incompatible', '.oh-my-harness/bundle-inventory.json', 'PRIOR_IDENTITY_MISMATCH');
+  }
+  return PRIOR_INVENTORY_CLASS;
 }
 
 export function releaseOwnedFiles(inventory, inventoryBytes = canonicalBytes(inventory)) {
@@ -223,8 +269,10 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
     assertSha(agent.sha256, 'agent hash');
     if (ownedByPath.get(agent.path)?.sha256 !== agent.sha256) conflict('agent ownership disagrees with owned files', agent.path);
   }
-  if (JSON.stringify(state.agents.map((item) => item.path)) !== JSON.stringify(AGENT_PATHS)) {
-    conflict('state does not own the exact six agent profiles', STATE_PATH);
+  const stateAgentPaths = state.agents.map((item) => item.path);
+  if (JSON.stringify(stateAgentPaths) !== JSON.stringify(AGENT_PATHS)
+      && JSON.stringify(stateAgentPaths) !== JSON.stringify(PRIOR_AGENT_PATHS)) {
+    conflict('state does not own a recognized exact agent profile set', STATE_PATH);
   }
   assertExactKeys(state.agentsMd, ['mode', 'blockSha256'], 'AGENTS.md state');
   if (!['created-file', 'managed-block'].includes(state.agentsMd.mode)) conflict('AGENTS.md ownership mode is invalid', 'AGENTS.md');
@@ -240,9 +288,9 @@ export function parseInstallState(bytes, { canonicalRoot, requireSurfacePaths = 
       conflict('backup record path is invalid', backup.path);
     }
     if (backup.sourcePath !== 'AGENTS.md#managed-block') assertSafeRelativePath(backup.sourcePath, 'backup source path');
-    const backupSuffix = backup.sourcePath === 'AGENTS.md#managed-block' ? 'AGENTS.md.managed-block' : backup.sourcePath;
-    if (backup.path !== `.oh-my-harness-backups/${backup.operationId}/${backupSuffix}`
-        || (backup.sourcePath !== 'AGENTS.md#managed-block' && !ownedByPath.has(backup.sourcePath))) {
+    const backupSuffix = backup.sourcePath === 'AGENTS.md#managed-block' ? 'AGENTS.md.managed-block'
+      : backup.sourcePath === STATE_PATH ? `${STATE_PATH}.prior` : backup.sourcePath;
+    if (backup.path !== `.oh-my-harness-backups/${backup.operationId}/${backupSuffix}`) {
       conflict('backup record does not match managed ownership', backup.path);
     }
     assertSha(backup.sha256, 'backup hash');
@@ -282,6 +330,50 @@ export function buildInstallState({
   };
 }
 
-export function sentinelDocument({ operationId: id, operation, targetIdentity: identity, priorStateSha256, requestedVersion, planSha256 }) {
-  return { schemaVersion: 1, operationId: id, operation, targetIdentity: identity, priorStateSha256, requestedVersion, planSha256 };
+export function sentinelDocument({
+  operationId: id, operation, targetIdentity: identity, priorStateSha256,
+  priorInventorySha256, requestedInventorySha256, requestedVersion, planSha256,
+  backupManifestSha256, outerPrefixLength, outerPrefixSha256, outerSuffixSha256,
+}) {
+  return {
+    schemaVersion: 2, operationId: id, operation, targetIdentity: identity,
+    priorStateSha256, priorInventorySha256, requestedInventorySha256, requestedVersion,
+    planSha256, backupManifestSha256, outerPrefixLength, outerPrefixSha256, outerSuffixSha256,
+  };
+}
+
+export function parseOperationSentinel(bytes) {
+  let document;
+  try {
+    document = JSON.parse(Buffer.from(bytes).toString('utf8'));
+  } catch {
+    conflict('operation sentinel is not valid JSON', SENTINEL_PATH, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  if (!canonicalBytes(document).equals(Buffer.from(bytes))) {
+    conflict('operation sentinel is not canonical', SENTINEL_PATH, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  assertExactKeys(document, [
+    'schemaVersion', 'operationId', 'operation', 'targetIdentity', 'priorStateSha256',
+    'priorInventorySha256', 'requestedInventorySha256', 'requestedVersion', 'planSha256',
+    'backupManifestSha256', 'outerPrefixLength', 'outerPrefixSha256', 'outerSuffixSha256',
+  ], 'operation sentinel');
+  if (document.schemaVersion !== 2 || !OPERATION_ID_PATTERN.test(document.operationId)
+      || !['install', 'update', 'uninstall'].includes(document.operation)
+      || !Number.isSafeInteger(document.outerPrefixLength) || document.outerPrefixLength < 0) {
+    conflict('operation sentinel identity is incompatible', SENTINEL_PATH, 'RECOVERY_IDENTITY_MISMATCH');
+  }
+  for (const [value, label] of [
+    [document.targetIdentity, 'sentinel target'],
+    [document.planSha256, 'sentinel plan'],
+    [document.backupManifestSha256, 'sentinel backup manifest'],
+    [document.outerPrefixSha256, 'sentinel outer prefix'],
+    [document.outerSuffixSha256, 'sentinel outer suffix'],
+  ]) assertSha(value, label);
+  for (const [value, label] of [
+    [document.priorStateSha256, 'sentinel prior state'],
+    [document.priorInventorySha256, 'sentinel prior inventory'],
+    [document.requestedInventorySha256, 'sentinel requested inventory'],
+  ]) if (value !== null) assertSha(value, label);
+  if (document.requestedVersion !== null) assertVersion(document.requestedVersion, 'sentinel requested version');
+  return document;
 }

@@ -7,7 +7,7 @@ This directory contains trigger-based routed documentation for the generic harne
 These files are route-table targets in `AGENTS.md`. Do not merge, rename, split, substitute, or move them without treating that as an architecture change.
 
 - `docs/agent-routing/README.md`: index, trigger-based reading convention, route maintenance, and routed-doc versus traceability-artifact distinction.
-- `task-docs/_harness/adaptive-orchestration-protocol.md`: normative adaptive main-thread control plane for topology selection and revision, delegation value, route/gate binding, dependencies, stable write boundaries, intervention, retry, synthesis, and producer-independent verification.
+- `task-docs/_harness/adaptive-orchestration-protocol.md`: normative main-thread control plane for fact-selected capabilities, invocation/report lifecycle, route/gate binding, dependencies, stable Boundaries, intervention, retry, synthesis, and producer-independent verification.
 - `docs/agent-routing/external-systems-and-secrets.md`: external system boundaries, credentials, auth, tokens, secrets, sensitive settings, and write gating.
 - `docs/agent-routing/current-state-evidence.md`: current-state checks for user-visible surfaces, live data, generated artifacts, and stale evidence risks.
 - `docs/agent-routing/high-risk-actions.md`: publish, deploy, delete, migration, restore, bulk write, permissions, billing/payment, keys/secrets, irreversible action, dry-run, and explicit confirmation stops.
@@ -33,7 +33,7 @@ Keep them under `task-docs/` or a run directory. Do not add them as mandatory `A
 - Keep routes trigger-based.
 - Keep route paths stable.
 - Keep always-on hard gates visible in `AGENTS.md`.
-- Treat adaptive orchestration as the default harness entry point and the complete v2 sequence as an explicit compatible option; do not turn either into an automatic all-route read.
+- Treat unified fact-selected orchestration as the Harness entry point. No capability subset or durable artifact is automatic, and ordinary LOW work must not become an all-route read.
 - Move long-form details into routed docs only when the router still retains the trigger and route.
 - Preserve source fidelity during router refactors through source snapshots, coverage manifests, rule ledgers, and routing fixtures.
 - Do not use route existence as a reason to read every route for ordinary low-risk work.

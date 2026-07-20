@@ -9,9 +9,13 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { validateReleaseContents } from '../../src/installer/package-bundle.mjs';
+import { verifyTerminalSourceGate } from '../../tools/validate-release.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const EXPECTED_CHILDREN = ['archive', 'cache', 'fixtures', 'home', 'logs', 'package', 'tmp', 'xdg'];
+const PRIOR_REVISION = 'e51d1fbf7a1b9475ac27aa6025542fb12b3bfb7c';
+const PRIOR_MAP_SHA256 = '38ac29aefb45a64749f27d76464b3cbb1bda221ea6882def195595828e695774';
+const PRIOR_INVENTORY_SHA256 = 'e83fd6f8a226206d3b1b1e4c48463e4d738d32d98349944225e074975bed8bcb';
 
 function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -94,6 +98,27 @@ function spawnIsolated(executable, args, { cwd, environment }) {
   return { status: child.status, stdout: child.stdout, stderr: child.stderr, detail: null };
 }
 
+async function fileManifest(root, relativePaths) {
+  const rows = [];
+  for (const relativePath of [...relativePaths].sort()) {
+    const bytes = await readFile(path.join(root, ...relativePath.split('/')));
+    rows.push({ path: relativePath, sha256: hash(bytes) });
+  }
+  return rows;
+}
+
+function extractPriorSource(destination) {
+  const gitExecutable = resolveExecutable('git');
+  const archived = spawnSync(gitExecutable, ['archive', PRIOR_REVISION], {
+    cwd: ROOT, env: { PATH: process.env.PATH }, maxBuffer: 32 * 1024 * 1024,
+  });
+  if (archived.status !== 0 || !Buffer.isBuffer(archived.stdout)) throw new Error('exact prior Git archive is unavailable');
+  const extracted = spawnSync('/usr/bin/tar', ['-x', '-C', destination], {
+    input: archived.stdout, env: { PATH: '/usr/bin:/bin' }, maxBuffer: 32 * 1024 * 1024,
+  });
+  if (extracted.status !== 0) throw new Error('exact prior Git archive could not be extracted');
+}
+
 function tarEntries(archiveBytes) {
   const bytes = gunzipSync(archiveBytes);
   const entries = new Map();
@@ -157,6 +182,13 @@ async function inspectArchive(archivePath, packageRoot) {
     readPayload: async (relativePath) => archive.get(`package/dist/${relativePath}`) ?? null,
     packageVersion: '0.1.0',
   });
+  if (release.inventory.requiredFiles.length !== 49
+      || release.files.size !== 51
+      || release.inventory.ownership.agentPaths.length !== 9
+      || release.inventory.requiredFiles.filter(({ kind }) => kind === 'template').length !== 17
+      || release.inventory.requiredFiles.some(({ assetId }) => assetId === 'template/task-contract')) {
+    throw new Error('packed release does not match the exact current 9/17/49/51 release contract');
+  }
   const expected = await expectedArchivePaths(packageRoot, release);
   assertSetEqual(new Set(archive.keys()), expected, 'archive allowlist');
   const metadata = JSON.parse(archive.get('package/package.json').toString('utf8'));
@@ -266,12 +298,144 @@ async function localArchiveSmoke({ npxExecutable, archivePath, fixtures, environ
   return statuses;
 }
 
+async function localArchiveMigrationSmoke({ npxExecutable, archivePath, archiveRelease, fixtures, environment }) {
+  const priorSource = path.join(fixtures, 'prior-source');
+  const target = path.join(fixtures, 'prior-target');
+  await mkdir(priorSource);
+  await mkdir(target);
+  extractPriorSource(priorSource);
+  if (hash(await readFile(path.join(priorSource, 'packaging/bundle-map.json'))) !== PRIOR_MAP_SHA256) {
+    throw new Error('exact prior map identity changed');
+  }
+  const priorBuild = spawnIsolated(process.execPath, [
+    path.join(priorSource, 'src/installer/package-bundle.mjs'), 'prepare', '--pack-root', priorSource,
+  ], { cwd: priorSource, environment });
+  if (priorBuild.status !== 0) throw new Error(`exact prior package build failed with status ${priorBuild.status}`);
+  const priorInventoryPath = path.join(priorSource, 'dist/.oh-my-harness/bundle-inventory.json');
+  if (hash(await readFile(priorInventoryPath)) !== PRIOR_INVENTORY_SHA256) {
+    throw new Error('exact prior inventory identity changed');
+  }
+  await writeFile(path.join(target, 'AGENTS.md'), 'synthetic archive outer router\r\n');
+  const priorInstall = spawnIsolated(process.execPath, [
+    path.join(priorSource, 'bin/oh-my-harness.mjs'), 'install', '--target', target, '--yes',
+  ], { cwd: fixtures, environment });
+  if (priorInstall.status !== 0) throw new Error(`exact prior install failed with status ${priorInstall.status}`);
+
+  await writeFile(path.join(target, 'unowned-target.txt'), 'synthetic unowned archive fixture\n');
+  await mkdir(path.join(target, '.oh-my-harness-backups/pre-existing'), { recursive: true });
+  await writeFile(path.join(target, '.oh-my-harness-backups/pre-existing/opaque.bin'), Buffer.from([0, 2, 4, 255]));
+  await mkdir(path.join(target, 'task-docs/history/synthetic-old-run'), { recursive: true });
+  await writeFile(path.join(target, 'task-docs/history/synthetic-old-run/ACCEPTED_CONTRACT.md'), 'synthetic historical contract\n');
+  await mkdir(path.join(target, 'task-docs/cases'), { recursive: true });
+  await writeFile(path.join(target, 'task-docs/cases/synthetic-case.md'), 'synthetic central case\n');
+  const protectedPaths = [
+    'unowned-target.txt', '.oh-my-harness-backups/pre-existing/opaque.bin',
+    'task-docs/history/synthetic-old-run/ACCEPTED_CONTRACT.md', 'task-docs/cases/synthetic-case.md',
+  ];
+  const protectedBefore = await fileManifest(target, protectedPaths);
+  const invoke = (operation, extra = []) => spawnIsolated(npxExecutable, [
+    '--yes', '--offline', `--package=${archivePath}`, 'oh-my-harness', operation,
+    '--target', target, ...extra,
+  ], { cwd: fixtures, environment });
+
+  const preview = invoke('update', ['--dry-run']);
+  if (preview.status !== 0) throw new Error(`archive prior migration preview failed with status ${preview.status}`);
+  const previewPlan = JSON.parse(preview.stdout).plan;
+  if (previewPlan.installedClass !== 'prior-six-42' || previewPlan.creates.length !== 8
+      || JSON.stringify(previewPlan.removes) !== JSON.stringify(['.oh-my-harness/templates/task-contract-template.md'])
+      || previewPlan.recoveryAction !== 'none') {
+    throw new Error('archive prior migration preview did not expose the exact transition');
+  }
+  if (JSON.stringify(await fileManifest(target, protectedPaths)) !== JSON.stringify(protectedBefore)) {
+    throw new Error('archive prior migration preview changed protected bytes');
+  }
+
+  const update = invoke('update', ['--yes']);
+  if (update.status !== 0 || !update.stdout.includes('"success": true')) {
+    throw new Error(`archive prior migration failed with status ${update.status}`);
+  }
+  for (const [relativePath, bytes] of archiveRelease.files) {
+    if (!bytes.equals(await readFile(path.join(target, ...relativePath.split('/'))))) {
+      throw new Error(`archive migration target mismatch: ${relativePath}`);
+    }
+  }
+  if (await readFile(path.join(target, '.oh-my-harness/templates/task-contract-template.md')).then(() => true).catch(() => false)) {
+    throw new Error('archive migration retained the obsolete Contract runtime template');
+  }
+  if (JSON.stringify(await fileManifest(target, protectedPaths)) !== JSON.stringify(protectedBefore)) {
+    throw new Error('archive migration changed protected bytes');
+  }
+
+  const noOp = invoke('update', ['--yes']);
+  if (noOp.status !== 0 || !noOp.stdout.includes('"status": "NO_OP"')) {
+    throw new Error('archive migration same-release update was not an exact no-op');
+  }
+  const uninstall = invoke('uninstall', ['--yes']);
+  if (uninstall.status !== 0 || !uninstall.stdout.includes('"success": true')) {
+    throw new Error(`archive migrated uninstall failed with status ${uninstall.status}`);
+  }
+  if (await readFile(path.join(target, '.oh-my-harness/install-state.json')).then(() => true).catch(() => false)) {
+    throw new Error('archive migrated uninstall retained state');
+  }
+  for (const relativePath of archiveRelease.files.keys()) {
+    if (await readFile(path.join(target, ...relativePath.split('/'))).then(() => true).catch(() => false)) {
+      throw new Error(`archive migrated uninstall retained owned payload: ${relativePath}`);
+    }
+  }
+  if (JSON.stringify(await fileManifest(target, protectedPaths)) !== JSON.stringify(protectedBefore)) {
+    throw new Error('archive migrated uninstall changed protected bytes');
+  }
+  return {
+    priorRevision: PRIOR_REVISION,
+    priorMapSha256: PRIOR_MAP_SHA256,
+    priorInventorySha256: PRIOR_INVENTORY_SHA256,
+    previewCreates: previewPlan.creates.length,
+    previewRemoves: previewPlan.removes,
+    protectedManifestSha256: hash(Buffer.from(JSON.stringify(protectedBefore))),
+    updateStatus: update.status,
+    noOpStatus: noOp.status,
+    uninstallStatus: uninstall.status,
+  };
+}
+
+export async function validateArchiveMigrationSourceFixture() {
+  if (process.version !== 'v24.14.0') throw new Error(`archive migration source fixture requires frozen Node v24.14.0, got ${process.version}`);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'oh-my-harness-t05-archive-source-'));
+  const rootReal = await realpath(root);
+  try {
+    for (const child of ['archive', 'cache', 'fixtures', 'home', 'logs', 'tmp', 'xdg']) await mkdir(path.join(rootReal, child));
+    await writeFile(path.join(rootReal, 'user.npmrc'), '', { flag: 'wx', mode: 0o600 });
+    await writeFile(path.join(rootReal, 'global.npmrc'), '', { flag: 'wx', mode: 0o600 });
+    const packageRoot = path.join(rootReal, 'package');
+    await stagePackage(packageRoot);
+    const npmExecutable = resolveExecutable('npm');
+    const npxExecutable = resolveExecutable('npx');
+    const environment = isolatedEnvironment(rootReal, npmExecutable);
+    const packed = spawnIsolated(npmExecutable, ['pack', '--json', '--pack-destination', path.join(rootReal, 'archive')], {
+      cwd: packageRoot, environment,
+    });
+    if (packed.status !== 0) throw new Error(`source-fixture npm pack failed with status ${packed.status}`);
+    const metadata = parsePackJson(packed.stdout, 'source-fixture npm pack');
+    await assertPackCleanup(packageRoot);
+    const archivePath = path.join(rootReal, 'archive', metadata.filename);
+    const inspected = await inspectArchive(archivePath, packageRoot);
+    const installEnvironment = isolatedEnvironment(rootReal, npmExecutable, { ignoreInstallScripts: true });
+    return await localArchiveMigrationSmoke({
+      npxExecutable, archivePath, archiveRelease: inspected.release,
+      fixtures: path.join(rootReal, 'fixtures'), environment: installEnvironment,
+    });
+  } finally {
+    await rm(rootReal, { recursive: true, force: false });
+  }
+}
+
 export function chooseValidationExit(primaryStatus, cleanupFailed) {
   return primaryStatus !== 0 ? primaryStatus : cleanupFailed ? 1 : 0;
 }
 
 export async function validatePackage() {
   if (process.version !== 'v24.14.0') throw new Error(`package validation requires frozen Node v24.14.0, got ${process.version}`);
+  const sourceGate = await verifyTerminalSourceGate();
   const beforeStatus = repositoryStatus();
   const beforeResidue = await forbiddenRepositoryResidue();
   if (beforeResidue.length) throw new Error(`forbidden repository residue exists before validation: ${beforeResidue.join(', ')}`);
@@ -319,6 +483,7 @@ export async function validatePackage() {
     }
 
     let archiveEvidence = null;
+    let archiveRelease = null;
     if (primaryStatus === 0) {
       const firstPack = spawnIsolated(npmExecutable, [
         'pack', '--json', '--pack-destination', archiveRoot,
@@ -354,6 +519,7 @@ export async function validatePackage() {
           if (repeatedArchives.length !== 1) throw new Error('repeated pack did not create exactly one archive');
           archivePath = path.join(archiveRoot, repeatedArchives[0]);
           const secondInspected = await inspectArchive(archivePath, packageRoot);
+          archiveRelease = secondInspected.release;
           assertSetEqual(secondInspected.expected, firstInspected.expected, 'repeated archive allowlist');
           if (JSON.stringify(comparablePackMetadata(secondMetadata))
               !== JSON.stringify(comparablePackMetadata(firstMetadata))) {
@@ -389,10 +555,23 @@ export async function validatePackage() {
       }
     }
 
+    let migrationSmoke = null;
+    if (primaryStatus === 0) {
+      try {
+        const installEnvironment = isolatedEnvironment(rootReal, npmExecutable, { ignoreInstallScripts: true });
+        migrationSmoke = await localArchiveMigrationSmoke({
+          npxExecutable, archivePath, archiveRelease,
+          fixtures: path.join(rootReal, 'fixtures'), environment: installEnvironment,
+        });
+      } catch (error) {
+        primaryStatus = Number.isInteger(error.childStatus) && error.childStatus !== 0 ? error.childStatus : 1;
+      }
+    }
+
     if (repositoryStatus() !== beforeStatus || (await forbiddenRepositoryResidue()).length) {
       if (primaryStatus === 0) primaryStatus = 1;
     }
-    evidence = { rootReal, ownershipToken, archive: archiveEvidence, smoke };
+    evidence = { rootReal, ownershipToken, sourceGate, archive: archiveEvidence, smoke, migrationSmoke };
   } finally {
     try {
       if (await realpath(root) !== rootReal || !rootReal.startsWith(await realpath(os.tmpdir()))) throw new Error('temporary root identity changed');

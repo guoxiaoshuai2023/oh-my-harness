@@ -5,10 +5,11 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { main, parseArguments } from '../../src/installer/cli.mjs';
-import { CONFLICT_CODES } from '../../src/installer/lifecycle.mjs';
+import { applyLifecyclePlan, CONFLICT_CODES, createLifecyclePlan } from '../../src/installer/lifecycle.mjs';
 import { preparePackage, loadReleaseBundle } from '../../src/installer/package-bundle.mjs';
 import { captureStream, nonTtyInput, ROOT, targetFixture, treeSnapshot, ttyInput } from './test-helpers.mjs';
-import { chooseValidationExit } from './package-validation.mjs';
+import { chooseValidationExit, validateArchiveMigrationSourceFixture } from './package-validation.mjs';
+import { authenticPriorFixture } from '../support/t05-migration-fixtures.mjs';
 
 let packageRoot;
 let release;
@@ -46,6 +47,52 @@ test('dry-run prints the canonical plan and never prompts or writes', async (t) 
   assert.match(envelope.planSha256, /^[0-9a-f]{64}$/);
   assert.deepEqual(await treeSnapshot(target), beforeTree);
   assert.equal(stderr.value(), '');
+});
+
+test('CLI previews exact prior migration and reports bounded restart recovery without adding a recover command', async (t) => {
+  const fixture = await authenticPriorFixture(t, { protectedContent: false });
+  const before = await treeSnapshot(fixture.target);
+  const preview = captureStream();
+  assert.equal(await main(['update', '--target', fixture.target, '--dry-run'], {
+    stdin: nonTtyInput(), stdout: preview.stream, stderr: captureStream().stream, release,
+  }), 0);
+  const envelope = JSON.parse(preview.value());
+  assert.equal(envelope.plan.installedClass, 'prior-six-42');
+  assert.equal(envelope.plan.recoveryAction, 'none');
+  assert.equal(envelope.plan.creates.length, 8);
+  assert.deepEqual(envelope.plan.removes, ['.oh-my-harness/templates/task-contract-template.md']);
+  assert.deepEqual(await treeSnapshot(fixture.target), before);
+
+  const planned = await createLifecyclePlan({ operation: 'update', target: fixture.target, release });
+  const failingPath = planned.plan.replaces[Math.min(2, planned.plan.replaces.length - 1)];
+  await assert.rejects(applyLifecyclePlan({
+    planned, target: fixture.target, release, faults: [`payload-write:${failingPath}`, 'rollback-start'],
+  }));
+  const recoveryPreview = captureStream();
+  assert.equal(await main(['update', '--target', fixture.target, '--dry-run'], {
+    stdin: nonTtyInput(), stdout: recoveryPreview.stream, stderr: captureStream().stream, release,
+  }), 0);
+  assert.equal(JSON.parse(recoveryPreview.value()).plan.recoveryAction, 'restore-prior');
+  const recoveredOut = captureStream();
+  assert.equal(await main(['update', '--target', fixture.target, '--yes'], {
+    stdin: nonTtyInput(), stdout: recoveredOut.stream, stderr: captureStream().stream, release,
+  }), 0);
+  assert.match(recoveredOut.value(), /"recoveryAction": "restore-prior"/);
+  assert.match(recoveredOut.value(), /"recoveryOutcome": "prior-restored"/);
+  assert.match(recoveredOut.value(), /"updateApplied": false/);
+  assert.throws(() => parseArguments(['recover', '--target', fixture.target]), /usage/);
+});
+
+test('scripts-enabled local archive migrates authentic prior state, no-ops, uninstalls, and preserves protected fixture bytes', async () => {
+  const evidence = await validateArchiveMigrationSourceFixture();
+  assert.equal(evidence.priorRevision, 'e51d1fbf7a1b9475ac27aa6025542fb12b3bfb7c');
+  assert.equal(evidence.priorInventorySha256, 'e83fd6f8a226206d3b1b1e4c48463e4d738d32d98349944225e074975bed8bcb');
+  assert.equal(evidence.previewCreates, 8);
+  assert.deepEqual(evidence.previewRemoves, ['.oh-my-harness/templates/task-contract-template.md']);
+  assert.equal(evidence.updateStatus, 0);
+  assert.equal(evidence.noOpStatus, 0);
+  assert.equal(evidence.uninstallStatus, 0);
+  assert.match(evidence.protectedManifestSha256, /^[0-9a-f]{64}$/);
 });
 
 test('non-TTY requires explicit confirmation after the plan; --yes applies it', async (t) => {
@@ -142,6 +189,8 @@ test('package and lock metadata exactly bind the scoped identity, binary, engine
   assert.deepEqual(CONFLICT_CODES, [
     'UNMANAGED_NAMESPACE', 'UNOWNED_DESTINATION', 'INVALID_MANAGED_MARKER',
     'UNVERIFIABLE_INSTALL_STATE', 'INCOMPATIBLE_INSTALLATION', 'DIRTY_OVERLAP',
+    'PRIOR_IDENTITY_MISMATCH', 'OWNED_DRIFT', 'MISSING_OWNED_SURFACE',
+    'RECOVERY_IDENTITY_MISMATCH', 'RECOVERY_AMBIGUOUS', 'RECOVERY_REQUIRED',
     'UNSAFE_PATH', 'TARGET_CHANGED', 'IO_UNAVAILABLE',
   ]);
 });
@@ -150,13 +199,41 @@ test('package validator preserves primary child status and cleanup status cannot
   assert.equal(chooseValidationExit(7, false), 7);
   assert.equal(chooseValidationExit(7, true), 7);
   assert.equal(chooseValidationExit(0, true), 1);
-  const child = spawnSync(process.execPath, [path.join(ROOT, 'test/lifecycle/package-validation.mjs')], {
-    cwd: ROOT, encoding: 'utf8', env: {
-      PATH: process.env.PATH, TMPDIR: os.tmpdir(), OH_MY_HARNESS_TEST_CHILD_STATUS: '7',
-    },
-  });
+  const receiptPath = process.env.OH_MY_HARNESS_SOURCE_GATE_RECEIPT;
+  const receiptSha256 = process.env.OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256;
+  assert.equal(typeof receiptPath, 'string', 'parent source-gate receipt path is required');
+  assert.equal(path.isAbsolute(receiptPath), true, 'parent source-gate receipt path must be absolute');
+  assert.match(receiptSha256 ?? '', /^[0-9a-f]{64}$/, 'parent source-gate receipt SHA-256 is required');
+  const childEnvironment = {
+    PATH: process.env.PATH,
+    TMPDIR: os.tmpdir(),
+    OH_MY_HARNESS_SOURCE_GATE_RECEIPT: receiptPath,
+    OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256: receiptSha256,
+    OH_MY_HARNESS_TEST_CHILD_STATUS: '7',
+  };
+  const spawnValidator = (env) => spawnSync(
+    process.execPath,
+    [path.join(ROOT, 'test/lifecycle/package-validation.mjs')],
+    { cwd: ROOT, encoding: 'utf8', env },
+  );
+  const child = spawnValidator(childEnvironment);
   assert.equal(child.status, 7);
   const result = JSON.parse(child.stdout.trim());
   assert.equal(result.primaryStatus, 7);
   assert.equal(result.cleanupFailed, false);
+
+  const missingReceiptPath = { ...childEnvironment };
+  delete missingReceiptPath.OH_MY_HARNESS_SOURCE_GATE_RECEIPT;
+  const missingReceiptHash = { ...childEnvironment };
+  delete missingReceiptHash.OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256;
+  for (const [name, env, expected] of [
+    ['missing receipt path', missingReceiptPath, /exact main-bound terminal source-gate receipt/],
+    ['missing receipt hash', missingReceiptHash, /exact main-bound terminal source-gate receipt/],
+    ['malformed receipt hash', { ...childEnvironment, OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256: 'not-a-sha256' }, /receipt identity is malformed/],
+  ]) {
+    const rejected = spawnValidator(env);
+    assert.equal(rejected.status, 1, name);
+    assert.match(rejected.stderr, expected, name);
+    assert.doesNotMatch(rejected.stdout, /"primaryStatus":7/, name);
+  }
 });

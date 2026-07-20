@@ -34,8 +34,8 @@
     },
     "requiredFiles": {
       "type": "array",
-      "minItems": 42,
-      "maxItems": 42,
+      "minItems": 49,
+      "maxItems": 49,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -90,15 +90,15 @@
       "properties": {
         "payloadPaths": {
           "type": "array",
-          "minItems": 42,
-          "maxItems": 42,
+          "minItems": 49,
+          "maxItems": 49,
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
         "agentPaths": {
           "type": "array",
-          "minItems": 6,
-          "maxItems": 6,
+          "minItems": 9,
+          "maxItems": 9,
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^\\.codex/agents/oh-my-harness-[a-z-]+\\.toml$" }
         },

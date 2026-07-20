@@ -1,146 +1,55 @@
-# Task Plan: <Title>
+# Task Plan: <Run>
 
-Use this template when planning adds material value or a triggered gate requires a durable plan. Direct LOW-risk work need not create it. A plan is not proof that every named harness role or later artifact is required.
+- Plan identity/version/path:
+- Producer invocation/completion:
+- Original Request Anchor identity/SHA-256:
+- Outcome Contract identity/SHA-256 when triggered:
+- Current Requirements/upstream identities/SHA-256:
+- Operational Risk / Semantic Risk:
 
-## 0. User Goal And Outcome Boundary
+## User Result And Non-Goals
 
-- Goal:
-- Non-goals:
-- Final user-visible or operational deliverable:
-- AC-pass-but-user-fail counterexample and failure signal:
-
-### Original Request Anchor
-
-- Required for MEDIUM/HIGH Semantic Risk: yes/no
-- Anchor source and stable identity:
-- Verbatim/source excerpt:
-
-```text
-<paste user language or source excerpt here>
-```
-
-- Redaction note:
-- Planner interpretation, explicitly not part of the anchor:
-
-### Outcome Contract
-
-- Required for HIGH Semantic Risk or multi-task cross-surface work: yes/no
-- Run-level boundary:
-  - OC1:
-  - OC2:
+- Observable overall result:
 - Forbidden substitutions:
-- Protected state:
-- Required outcome evidence:
-- Frozen identity/location:
+- Credible all-Tasks-PASS-but-user-fail stop:
 
-## 1. Current Facts, Assumptions, And Fresh Checks
+## Delivery Topology And Currentness
 
-- Repo/file facts read:
-- Current-state evidence and captured-at/freshness rule:
-- External-system checks required:
-- Known assumptions:
-- Unknowns that affect scope, safety, or intent:
-- Stop/question point:
+- Delivery Tasks and dependency order:
+- Shared integration/write owner:
+- Triggered gates and owners/evidence/decisions:
+- Omitted capabilities/artifacts and factual reason:
+- Later changed behavior surface rule: name affected upstream Tasks/ACs, rerun primary evidence, and obtain main no-impact/reopen-reaccept/supersession before acceptance.
 
-## 2. Risk And Triggered Controls
+## Delivery Task <ID>: <Observable Result>
 
-- Operational Risk: LOW/MEDIUM/HIGH — basis:
-- Semantic Risk: LOW/MEDIUM/HIGH — basis:
-- Blast radius, reversibility, and protected/dirty/shared state:
-- LOW-risk lightweight handling, if applicable:
-- Stable write-boundary level required:
-- Producer-independent verification required and review type:
+- Result:
+- Scope / non-goals:
+- Owner and decision owner:
+- Dependencies/readiness:
+- Protected upstream/downstream:
+- Downstream consumer/revalidation:
+- Acceptance criteria:
+- Primary behavior evidence:
+- Actual result observation/readback path and identity:
+- AC → primary evidence → expectation/path → owner → consumer/revalidation ledger:
+- Discriminating failure signal:
+- Strict PASS/FAIL path:
+- Subjective artifact/dimensions/evidence, decision owner, frozen user-authorized rubric/delegation, advisory evaluator, unresolved dimensions (when applicable):
+- Blocker/supersession/obsolete/cancellation:
+- Accepted output identity/form:
+- Technical Solution Design trigger and factual uncertainty:
 
-| Triggered route/gate | Triggering fact | Owner | Required primary evidence | Decision point |
-| --- | --- | --- | --- | --- |
-|  |  |  |  |  |
+## Coverage And Stops
 
-Routes considered but not triggered, when material:
+- Requirement/outcome → Task/AC/evidence/owner/consumer matrix:
+- Proxy/count/file/role/schema substitution rejected:
+- Stop for upstream defect, missing user decision, Architecture/interface change, permission expansion, protected mutation, or unowned expectation.
 
--
+The Planner writes one candidate only. Reviews and acceptance are gates, not delivery Tasks. Main owns Plan transition.
 
-## 3. Adaptive Topology And Continuity
+The adjacent interface requires the semantic acceptance decisions and declares the Plan inputs they consume. It defines no proxy or subjective decision result.
 
-- Selected topology:
-- Why each delegation or review adds material value:
-- Why direct work is or is not equally reliable:
-- Major stages intentionally omitted and rationale:
-- Explicit full-v2 requested or required by stricter policy: yes/no
-- Dependencies and safe parallel opportunities:
-- Shared-state/write-conflict controls:
-- Cancellation, obsolete-work, and synthesis owner:
-- Durable context/handoff required: yes/no — trigger or no-trigger reason:
-- Topology reassessment events:
-- Retry-domain identity and finite-budget needs, if prior failure exists:
-
-## 4. Delivery Tasks
-
-### Task 1: <Task Name>
-
-Goal:
-
--
-
-Scope:
-
-- In scope:
-- Out of scope:
-
-Authority and state:
-
-- Controlling source:
-- Allowed file/external areas:
-- Protected state:
-- Dependencies/prerequisites:
-- Downstream consumers:
-- Cancellation/obsolete condition:
-
-Delegation and boundary:
-
-- Direct or delegated:
-- Task packet required: yes/no — form/location:
-- Stable authoritative write boundary: concise packet / frozen-versioned / N/A
-- Boundary identity/version owner:
-- Producer may modify boundary: no
-- Nested delegation: prohibited / bounded authorization:
-
-External systems:
-
-- Read-only checks:
-- Writes and exact target/effect:
-- Confirmation/recovery/readback:
-- Secrets/sensitive-data boundary:
-
-Acceptance criteria:
-
-| AC | Type | Requirement | Evidence required | Validation |
-| --- | --- | --- | --- | --- |
-| AC1 | Outcome / Implementation / Safety |  |  |  |
-
-Stop conditions:
-
--
-
-Validation commands/checks:
-
--
-
-Expected report fields:
-
-- Applicable authoritative boundary identity.
-- Actual topology/delegation/integration when material.
-- Primary evidence, validation, omitted stages, unchecked areas, blockers, and residual risk.
-
-## 5. Failure Routing And Final Acceptance
-
-- Valid quality-failure evidence and assigned review type:
-- Stage-local and retry-domain cumulative continuity:
-- Artifact-free operational cause tracking:
-- Intervention trigger and owner:
-- Exhaustion/blocking scope:
-- Safety-recovery boundary, if already authorized:
-- Qualifying-resume rule and one-cycle/attempt maximum:
-- Main-thread synthesis and primary-evidence inspection:
-- Independent verification required before final acceptance:
-
-Review, plan evaluation, solution review, Result QA, semantic comparison, compliance checks, and final acceptance are gates/checks, not delivery tasks.
+<!-- oh-my-harness-work-truth:v1:start -->
+{"version":1,"id":"interface.plan","domain":"interface:plan","kind":"interface","sourceOwner":"task-docs/_harness/templates/plan-template.md","requires":["acceptance.actual-result","acceptance.proxy-stop","subjective.main-delegated","subjective.return-user","task3.current"],"emits":["observableResult","scopeAndNonGoals","deliveryOwner","decisionOwner","prerequisitesAndReadiness","protectedUpstreamAndDownstream","acceptanceCriteria","primaryEvidence","actualResultObservation","acEvidenceExpectationOwnerConsumerLedger","discriminatingFailure","strictDecisionPath","lifecycleAndAcceptedIdentity","designTrigger"],"references":["subjectiveArtifactDimensionsEvidence","frozenUserRubricAndDelegation","advisoryEvaluatorReport","currentnessTransition"],"forbids":["proxyAsResult","evaluatorFinalAcceptance","inventedPreference","rubricFreeAcceptance"]}
+<!-- oh-my-harness-work-truth:v1:end -->

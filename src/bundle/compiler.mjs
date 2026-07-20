@@ -30,9 +30,11 @@ const REQUIRED_ROUTER_SECTIONS = [
 ];
 
 const EVALUATOR_IDS = new Set([
+  'agent/requirements-evaluator',
   'agent/plan-evaluator',
   'agent/solution-evaluator',
   'agent/result-evaluator',
+  'agent/orchestration-reviewer',
 ]);
 
 const SOURCE_ONLY_REFERENCES = [
@@ -131,11 +133,25 @@ function assertManagedBlock(template, sourceRouter, map) {
 }
 
 function addEvaluatorCalibrationBinding(content, calibrationPath, calibrationSha) {
-  const anchor = '\n\nEvaluate';
+  const anchor = '\n\nInspect primary evidence';
   const index = content.indexOf(anchor);
   if (index < 0) throw new Error('evaluator profile has no stable calibration-binding insertion point');
   const binding = `\n\nInstalled canonical evaluator calibration for this bundle: path \`${calibrationPath}\`; SHA-256 \`${calibrationSha}\`. This binding does not replace the main-thread packet requirement above.`;
   return `${content.slice(0, index)}${binding}${content.slice(index)}`;
+}
+
+function addCalibrationLedgerBinding(content, calibrationPath, calibrationSha) {
+  const anchor = `Canonical evaluator calibration path: ${calibrationPath}`;
+  const anchorCount = count(content, anchor);
+  if (anchorCount !== 1) {
+    throw new Error(`acceptance matrix must contain exactly one installed calibration anchor; found ${anchorCount}`);
+  }
+  const label = 'Installed transformed calibration SHA-256:';
+  if (content.includes(label)) {
+    throw new Error('acceptance matrix must not contain a pre-existing installed calibration binding');
+  }
+  const binding = `${label} \`${calibrationSha}\``;
+  return content.replace(anchor, `${anchor}\n${binding}`);
 }
 
 function isTokenBoundary(content, index, direction) {
@@ -244,16 +260,18 @@ export async function buildBundle({ rootDir, outputDir, version }) {
   if (!path.isAbsolute(rootDir) || !path.isAbsolute(outputDir)) throw new Error('rootDir and outputDir must be absolute paths');
   await assertEmptyOutput(outputDir);
 
-  const [packageContract, map, packageSchema, inventorySchema, managedTemplate, sourceRouter] = await Promise.all([
+  const [packageContract, map, packageSchema, inventorySchema] = await Promise.all([
     readJson(rootDir, CONFIG_PATHS.packageContract, 'package contract'),
     readJson(rootDir, CONFIG_PATHS.bundleMap, 'bundle map'),
     readJson(rootDir, CONFIG_PATHS.packageSchema, 'package contract schema'),
     readJson(rootDir, CONFIG_PATHS.inventorySchema, 'bundle inventory schema'),
-    readFile(path.join(rootDir, CONFIG_PATHS.managedBlock), 'utf8'),
-    readFile(path.join(rootDir, 'AGENTS.md'), 'utf8'),
   ]);
   assertPackageContract(packageContract, packageSchema);
   assertBundleMap(map);
+  const [managedTemplate, sourceRouter] = await Promise.all([
+    readFile(path.join(rootDir, CONFIG_PATHS.managedBlock), 'utf8'),
+    readFile(path.join(rootDir, 'AGENTS.md'), 'utf8'),
+  ]);
   assertManagedBlock(managedTemplate, sourceRouter, map);
 
   const sourceContents = new Map();
@@ -285,6 +303,10 @@ export async function buildBundle({ rootDir, outputDir, version }) {
       if (content.includes(calibrationSourceSha)) {
         content = content.split(calibrationSourceSha).join(calibrationSha);
         transformations.push('calibration-hash-regeneration');
+      }
+      if (entry.assetId === 'calibration/adaptive-orchestration-acceptance-matrix') {
+        content = addCalibrationLedgerBinding(content, map.calibrationBinding.destinationPath, calibrationSha);
+        transformations.push('calibration-ledger-binding');
       }
       if (EVALUATOR_IDS.has(entry.assetId)) {
         content = addEvaluatorCalibrationBinding(content, map.calibrationBinding.destinationPath, calibrationSha);

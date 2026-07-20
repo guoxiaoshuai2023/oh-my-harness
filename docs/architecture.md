@@ -1,113 +1,134 @@
-# Generic Harness Architecture
+# Unified Adaptive Harness Architecture
 
-`oh-my-harness` packages a repeatable information architecture for agent-governed repos.
+oh-my-harness is one main-thread-controlled governance system. Task facts select the smallest useful subset of optional capabilities; triggered gates remain mandatory; main owns every launch, Boundary, verification, transition, and acceptance.
 
 ## Layers
 
 | Layer | Responsibility |
 | --- | --- |
-| Router | `AGENTS.md` keeps always-on gates, route triggers, adaptive entry, explicit full-v2 compatibility, semantic entry points, and validation minimums visible. |
-| Routed docs | `docs/agent-routing/*` carries detailed rules that are read only when their triggers apply. |
-| Harness protocols | `task-docs/_harness/*` defines adaptive topology, stable authority, finite retry/intervention, proportional run state, semantic fidelity, and artifact contracts. |
-| Traceability artifacts | Source snapshots, coverage manifests, rule ledgers, and routing fixtures support rule-preservation review during migration. |
-| Templates | Reusable Markdown files make the harness portable without hard-coding one project's domain. |
-| Runtime adapters | `.codex/agents/*` maps the six logical responsibilities into one concrete subagent configuration format. |
-| Scripts | Small stdlib-only helpers automate source block extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
-| Release bundle | The package build maps fixed sources into an immutable inventory and an exact installed payload. |
-| Target lifecycle | The Node CLI plans and applies ownership-checked install, update, and uninstall operations. |
+| Router | AGENTS.md keeps hard gates, route triggers, the nine-capability entry, semantic triggers, and validation minimums visible. |
+| Routed rules | docs/agent-routing and the three Harness protocols provide fact-triggered long-form rules. |
+| Capability profiles | .codex/agents contains nine stable missions; dynamic objective, sources, paths, ACs, commands, dependencies, and budgets stay packet-owned. |
+| Active templates | Optional Requirements, Plan, Technical Design, packet, report, Context, QA, and traceability shapes. |
+| Evidence | Governance behavior tests, current-state checks, route fixtures, source snapshots, coverage manifests, and rule ledgers support decisions without becoming authority. |
+| Release/target lifecycle | Bundle and installer planes map a separately accepted source identity into owned installed payload. Source changes are not release closure. |
 
-## Router Pattern
+## Capability Plane
 
-The router should be short and stable. It should answer:
-
-- What must always be true?
-- Which trigger sends an agent to which routed doc?
-- Where is adaptive topology authority, and when is full v2 required or deliberately justified?
-- When does semantic fidelity protocol activate?
-- What validation/reporting minimums apply to every task?
-
-The router should not carry every long-form rule, command list, runbook, or domain explanation. Those belong in routed docs.
-
-## Traceability Pattern
-
-When refactoring an existing instruction file into a router, do not rely on memory or "roughly equivalent" rewrite claims.
-
-Use four evidence artifacts:
-
-| Artifact | Purpose |
-| --- | --- |
-| Source snapshot | Immutable raw full-text copy of the source with stable block IDs and SHA-256. Do not snapshot secret-bearing files unless explicitly authorized and redacted. |
-| Source coverage manifest | One row for every source block, classified as Rule ID, Non-normative, or Duplicate. |
-| Rule preservation ledger | One entry for every normative rule, mapping source force to target force and route trigger. |
-| Routing scenario fixture | Forward and reverse coverage of route triggers and Rule IDs. The validator is a smoke/coverage check for trigger, route, path, and rule mentions only. |
-
-`scripts/validate_rule_preservation.py` checks the structural traceability layer: each source block appears once in the coverage manifest, coverage Rule IDs are represented in the ledger, strong `MUST` / `MUST NOT` / `STOP` force is not downgraded, and duplicate rows explicitly assert equivalence across force, trigger, stop condition, forbidden action, required action, and safety boundary.
-
-The router fixture validator is not a semantic equivalence verifier and does not replace rule ledger review, force preservation review, duplicate equivalence judgment, evaluator review, or main-thread review.
-
-## Risk Model
-
-The harness separates two different risks:
-
-- `Operational Risk`: damage from writes, publishes, deletes, migrations, permissions, payments, keys, data loss, or hard-to-recover changes.
-- `Semantic Risk`: damage from losing, compressing, substituting, or misrouting user intent or project rules.
-
-LOW semantic risk work should stay lightweight. MEDIUM/HIGH semantic risk work uses anchors, Pass A/Pass B baselines, outcome contracts, semantic diff, and strict evaluator loops.
-
-## Authority Ownership
-
-| Concern | Authoritative owner | Boundary |
+| Capability | Stable mission | Logical write boundary |
 | --- | --- | --- |
-| Always-on gates and fact-triggered route entry | `AGENTS.md` and `docs/agent-routing/*` | Route existence is not invocation evidence; a delegation proves inheritance or explicitly binds routes/gates. |
-| Topology selection/revision, delegation value, dependencies, synthesis, failure classification, finite budgets, intervention, recovery, and final acceptance | `task-docs/_harness/adaptive-orchestration-protocol.md` and the main thread | Roles/stages are optional; triggered gates are mandatory. The main thread cannot delegate final acceptance. Deliberate complete-v2 selection requires a task-specific six-field evidence record rather than a risk label or available-role count. |
-| Anchor, Pass A/B, Outcome Contract, semantic comparison, and AC-pass-but-user-fail controls | `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic controls augment the selected topology; they do not create a seventh role or competing pipeline. |
-| Packet, context, stable boundary, report, and independent-QA shapes | Run-directory protocol and Task 2 templates | Every delegation is complete; durable artifacts are created only when triggered; producers cannot alter their authority. |
-| Reusable role mission, permission, independence, evidence, and stop behavior | Six logical capability profiles | Current project paths, ACs, commands, topology, and output depth remain packet-owned. |
-| Runtime mapping and enforcement details | `docs/adapters/codex-subagents.md` and the concrete adapter | Adapter docs describe runtime mechanics only; they do not redefine harness authority. |
+| Requirements Author | one source-backed Requirements candidate | one packet path |
+| Requirements Evaluator | strict independent Requirements review | one unique report |
+| Planner | one acceptance-closed Task Plan candidate | one packet path |
+| Plan Evaluator | strict independent Plan/current-upstream review | one unique report |
+| Solution Designer | one concrete Technical Solution Design candidate | one packet path |
+| Solution Evaluator | strict independent Technical Solution Design review | one unique report |
+| Executor | exactly one Task under one main-issued Boundary | Boundary-limited product/report writes |
+| Result Evaluator | strict independent actual-result QA | one unique report |
+| Orchestration Reviewer | strict advisory review of bounded governance | one unique report |
 
-Adaptive governance is the default entry: the main thread MUST select the smallest sufficient composition and record material omissions for MEDIUM/HIGH work. The exact six-interface full-v2 sequence MUST run when the user explicitly requests it or stricter downstream policy requires it. Without either requirement trigger, the main thread MAY deliberately select the same sequence when a complete task-specific record shows that it is the clearest and most effective control coverage.
+All nine are independently selectable and hard no-fan-out. A capability must not create, invoke, launch, delegate to, or reconfigure another agent. Only main starts a new invocation.
 
-That deliberate record identifies concrete task facts; compares at least one smaller viable topology and its specific control, evidence, or handoff gap; maps non-duplicative value for planner, plan evaluator, solution designer, solution evaluator, executor, and result evaluator; binds triggered gate owners, primary evidence, dependencies, handoffs, and decision points; explains cost/context impact and positive marginal value; and confirms that synthesis, topology revision, intervention, finite retry budgets, evidence arbitration, and final acceptance remain active. HIGH Operational or Semantic Risk, broad scope, harness presence, role availability, and process inertia may inform the facts but never independently select full v2. These modes remain composable and non-exhaustive, and the runtime adapter still maps capabilities without owning topology.
+The five evaluator/reviewer profiles use report-capable workspace-write because they must create their own reports. Their authority is logical report-only write boundary plus post-execution verification. It is not native path isolation, runtime attestation, or source/product permission.
 
-## Package And Lifecycle Authority Planes
+## Fact Selection And Gate Ownership
 
-Release, target lifecycle, and evidence are separate planes. A fact in one plane does not silently grant authority in another.
+Before acting, main records the user result/non-goals, Operational Risk, Semantic Risk, current-state needs, uncertainty, protected state, write/external authority, dependencies, and triggered gates. It chooses a capability only for task-specific production value, independent judgment, context isolation, or time-to-evidence improvement.
 
-| Surface | Authority | Limit |
-| --- | --- | --- |
-| `packaging/bundle-map.json` | Selects the release sources, installed destinations, reference rewrites, managed-block source, and calibration dependents used by the bundle build. | It is build input, not target ownership or permission to mutate a repository. |
-| Installed `.oh-my-harness/bundle-inventory.json` | Immutable release manifest for package identity, version, exact required destination hashes, six agent paths, managed-block identity, and reference policy. | It does not record mutable target history and cannot authorize replacement without validated installed state. |
-| Lifecycle code | Owns planning, conflict classification, confirmation, containment, write order, verification, and truthful result reporting. | It cannot infer ownership, merge target content, repair incomplete installs, or publish a release. |
-| Managed `install-state.json` | Mutable, canonical target state within the managed namespace: installed version, target identity, exact owned files, six agents, managed-block mode, verification, operation, and backups. | It is deliberately non-self-hashing: the state file is not listed as one of its own owned files. It must reconcile with the installed immutable inventory. |
-| Managed `AGENTS.md` block | Owns exactly one byte-exact interval between the oh-my-harness start and end markers. | Target instructions outside the interval remain target-owned and effective. Damaged or ambiguous markers stop the lifecycle. |
-| Current target content | Supplies present-state evidence, including drift and exact Git overlap. | Names, prefixes, or similarity never establish Harness ownership. Modified managed bytes require disclosure, backup, and confirmation. |
-| `.oh-my-harness-backups/<operation-id>/` | Preserves exact modified managed bytes before replacement or removal. Backups are target-owned after creation. | They are not installed release payload. Later absence or target cleanup is non-blocking and is not performed by uninstall. |
-| Tests, fixtures, and local package validation | Provide reproducible structural and runtime evidence for the release candidate. | Passing checks do not prove semantic equivalence, target-rule compatibility, npm ownership, signing, publication, or public release. |
-| Outer npm `LICENSE` | Supplies the Apache-2.0 license for the repository and packed npm package. | It is package metadata, not a bundle-map source or installed `.oh-my-harness/` asset. |
-| Product docs | Explain the supported architecture, commands, lifecycle contract, and release boundary. | Documentation does not override code or frozen package inputs. A discrepancy is a stop condition, not permission to invent behavior. |
+No mode label, fixed order, compatibility branch, or capability count selects behavior. Dependency facts determine order. LOW direct work with no trigger creates no invocation or durable governance artifact. HIGH risk requires complete safety/semantic/current-state/Boundary/independence/retry/validation coverage, not every capability.
 
-Install creates only absent required destinations. Update and uninstall first validate the old canonical state and reconcile it with the installed immutable inventory. Update may replace an old owned path, remove an old owned path no longer in the new inventory, or create a newly required path only when that destination is absent. An unowned collision or unverifiable ownership stops without merge or inference. Install/update publish verified state last; uninstall removes state only after owned content and the managed block have been removed and verified.
+## Authority And Lifecycle
 
-The CLI writes an operation sentinel before payload mutation. A capturable failure never reports success; a retained sentinel, recognized temporary file, missing owned surface, or payload/state mismatch makes a later invocation stop as `INCOMPLETE_OR_UNOWNED`. Generalized recovery and reconciliation are intentionally outside this lifecycle.
+Main-exclusive actions:
 
-The package lifecycle requires Node `>=24 <25` and only the Node standard library. Python 3.11 is reserved for the three required installed helper validators. The repository and outer npm package use Apache-2.0; `LICENSE` remains outside the installed Harness bundle. Local `.tgz` package, fixture, and CI evidence can establish a reproducible local candidate; npm scope access/ownership, credentials, signing, publication, and release creation require later owner and external-write authority.
+- select/revise topology and issue every packet;
+- create/freeze/version attempt Boundaries;
+- launch every producer/evaluator invocation;
+- verify artifact identity/hash/completion, protected inputs, and actual write scope;
+- classify findings/failures, authorize retry/intervention, stop/unlock/transition, and accept.
 
-Material target-repository authority and Harness authority conflicts cause `STOP`; neither the managed block nor the lifecycle may weaken or take over target rules. Likewise, parsing, hashes, TOML validity, package smoke checks, fixtures, and structural validators are evidence at their actual scope, never semantic proof.
+Formal exchange:
 
-## Adapter Pattern
+    main producer packet/launch
+      → producer candidate
+      → main candidate hash/scope verification
+      → main evaluator packet/launch
+      → evaluator reads exact candidate/upstream and writes unique report
+      → main report/target/upstream/scope verification
+      → main finding disposition and transition
 
-The six logical responsibilities are runtime-independent, reusable capabilities rather than a mandatory lifecycle. This repo includes a Codex adapter in `.codex/agents/` so the harness is usable out of the box, but those TOML files are not the source of truth by themselves.
+Producer and evaluator paths are invocation-specific and absent before launch. A receipt is an optional main-owned derivative and cannot impersonate evaluator voice. Peer messages are limited to question, clarification, artifact-ready notice, and evidence/finding reference; they cannot change authority.
 
-The source of truth is:
+## Technical Solution Design And Boundary
 
-- `AGENTS.md` for always-on gates and route triggers.
-- `docs/agent-routing/*` for detailed triggered rules.
-- `task-docs/_harness/adaptive-orchestration-protocol.md` for topology and control-plane authority.
-- Other `task-docs/_harness/*` files for semantic, run-state, and artifact protocols.
-- `task-docs/_harness/templates/*` for artifact shapes.
+A Task is an acceptance-closed result unit. Technical Solution Design is selected only when implementation path, affected surface, order, state/error/failure handling, irreversible points, or validation strategy is materially uncertain.
 
-Downstream projects may replace `.codex/agents/` with another runtime adapter as long as they preserve the six responsibilities and strict boundaries. Runtime-specific launch, sandbox, and enforcement claims belong in adapter documentation, not in the generic architecture or profiles.
+The Solution Designer chooses one concrete path; the Solution Evaluator reviews exactly that Design. Neither creates/reviews attempt permission, changes the Task, or owns lifecycle. A Design's predicted affected surface is not permission.
 
-## Portability Boundaries
+After Design acceptance, main derives the attempt Boundary from the Frozen Task, accepted Design when present, current state, protected state, and triggered gates. Inline, packet-carried, and persisted/versioned forms all fix allowed actions/paths, protected state, evidence/negative probes, validation, stops, identity, and material-change behavior. New Runs do not select a separate permission-document workflow; older Run permission artifacts remain history only.
 
-This repo intentionally avoids embedding any single product, platform, industry, or internal-system domain. Downstream repos should replace generic route examples with their real commands and stop conditions while preserving the router architecture.
+## Report Integrity And Recovery
+
+Integrity precedes verdict:
+
+1. target/upstream/protected mutation or extra/unattributable write: invalid/STOP;
+2. target/upstream binding mismatch: invalid/STOP;
+3. collision, parent preparation, permission, runtime/tool, or missing terminal report: operational incomplete/unavailable;
+4. partial/unavailable/malformed report: incomplete/invalid;
+5. complete verified strict FAIL/PASS: quality evidence for main disposition, never automatic transition.
+
+A retry uses a new invocation and new absent report path. Collision is not overwritten, partial output is not promoted, and missing evidence is not recreated from transcript/summary. Permission expansion requires explicit user confirmation. Unisolated writers are serialized.
+
+## Finite Failure Control
+
+Stage-local valid quality failures, retry-domain cumulative quality failures, and normalized-cause operational attempts remain separate. The first valid quality failure may receive focused revision; the second requires intervention before a third; a post-intervention third exhausts. The first same-cause operational failure may receive one checked retry; the second requires intervention before third; a post-intervention third blocks/exhausts the path. Rename, role, tool, task split, Boundary, or topology change does not reset the domain.
+
+## Semantic And Evidence Architecture
+
+MEDIUM/HIGH plans bind an Original Request Anchor; Pass A freezes a pre-candidate baseline and Pass B evaluates one Plan against it. HIGH or multi-task cross-surface work binds a run-level Outcome Contract as semantic authority. Current user-visible or generated state is inspected fresh when it affects correctness. Credible AC-pass-but-user-fail behavior is encoded in ACs, evidence, stops, or evaluator loops.
+
+Structural checks prove only their measured structure. Exact source behavior, end-to-end traces, discriminating negatives, producer-independent verification, and main primary-evidence inspection decide acceptance.
+
+## Recoverable Work Truth
+
+Continuity-sensitive work needs enough durable truth to recover authority and evidence without turning every small Task into a workflow. Persistence is therefore selected by independent facts. A self-contained Task stays inline. Loss-of-memory risk adds Living Context; multi-task dependency, blocker, consumer-readiness, retry-summary, or wrong-unlock risk adds Task Board; detailed acceptance evidence, attempts, findings, waivers, intervention, or retry history adds per-task state. These views can coexist, but none is created merely to complete an artifact set.
+
+Each view has one controlling scope and one writer. Main owns all state changes. Context carries Run-level goal, authority, topology, gates and next action; Board indexes Tasks and records readiness; per-task state carries full AC evidence and attempt/finding/retry truth. Cross-references use exact identities and hashes. Durable publication stages Task State, then Board, then Context, reads all participating bytes back, and advances the commit root only when the complete allowed delta agrees. Partial publication, a protected write, wrong writer, or conflicting hash retains the last fully verified state and stops automatic advancement.
+
+The lifecycle vocabulary is exactly `pending`, `active`, `blocked`, `exhausted`, `completed`, `superseded`, and `cancelled`. Acceptance is a binding event, not another state. Only main may take a permitted transition, and downstream unlock is a separate current-readiness decision. Compaction may shorten narrative, but it preserves failures and finding dispositions, all retry counters, intervention/exhaustion/resume state, waivers, rejected or pending decisions, blockers, and exact authority/evidence/readback/QA/accepted-state identities.
+
+Acceptance closes on the observed user-valued result and an exact AC-to-primary-evidence-to-expectation-to-owner-to-consumer chain. Prompts, schemas, files, templates, counts, hashes, reports, parser success and command exits remain supporting evidence. Subjective work additionally binds the observable artifact, dimensions, primary evidence and exact frozen user-authorized rubric. Main may decide only within explicit delegated preference authority; otherwise the unresolved choice returns to the user, and evaluators stay advisory.
+
+The governing source plane remains the adaptive, run-directory and semantic protocols plus their seven active interfaces. Versioned JSON-line records are embedded adjacent executable projections, not a parallel authority or runtime service. Protocols alone own decisions; templates declare required decisions and evidence fields. The explicit-root loader rejects missing paths or blocks, fallback, path escape, symlinks, malformed or duplicate-key JSON, unknown fields/operators, owner/domain duplication, unresolved interfaces and contradictions. The generic interpreter has no domain result defaults. Every decision carries source-byte and field provenance, and every normative field must affect a causal trace.
+
+Two physical prevention paths keep the state model from proving itself. Task 2 runs in a fresh external temporary directory, attributes an authorized staged mutation, reads exact bytes back, and compares complete before/after manifests including protected tracked, untracked and ignored sentinels. Wrong writers, bypasses, leakage, unobserved corruption, Board/State conflict and object-only claims stop. Task 3 reads the current source-derived capability registry and exact profile bytes, binds currentness and the remaining write set into the topology input, and chooses verification-only with Result Evaluator and without the uniquely resolved Executor only when the write set is empty. Registry/profile drift, stale or blocked evidence, duplicate resolution, or an unexpected write invalidates the decision and returns to main without repair.
+
+Omitted, reversed and contradictory protocol/interface records are replayed from exact temporary source copies through the same loader and decision path. Valid reversal must change behavior and fail the independent frozen expectation; structural green is insufficient. Independent semantic review also compares every adjacent record with prose for force, trigger, owner, required and forbidden action, result and stop. Neither representation silently wins a contradiction.
+
+## Complete-Run Learning And Human Case Custody
+
+Learning begins only after one non-trivial requirement Run reaches `accepted`, `blocked`, `exhausted`, or `stopped`. Main binds the physical terminal observation, current evidence index, persistence result, participating views, history, and learning-contract digest, then performs one lightweight scan. Task completion is not a Run end, and a clean scan creates no retrospective, case, or empty directory.
+
+The existing eight persistence outcomes remain authoritative. Context, when selected, uniquely stores the canonical scan in `failureScan`; otherwise main holds canonical inline bytes in the uninterrupted terminalization session. Board and Task State can contribute references but never own scan truth. An exact repeat is a no-op, conflict or staleness stops, and a fresh session opening an already-terminal Run without exact history fails closed. Planned reentry or session end with continuing work first transfers unchanged inline bytes to source-selected Context through ordinary publication. This preserves at-most-once behavior without claiming native crash recovery.
+
+All seventeen learning triggers and privacy/evidence precedence are protocol-owned executable projections. Only a trigger plus sufficient privacy-safe primary evidence creates the bottom-up pair:
+
+    task-docs/history/<run>/learning/RETROSPECTIVE-<version>.md
+      → task-docs/history/<run>/learning/cases/candidates/NEGATIVE_CASE-<version>.md
+      → fact-selected Result Evaluator writes one report only
+      → main verifies and dispositions routing only
+      → later explicit human disposition and human-authorized custodian, if separately authorized
+
+The retrospective template exposes evidence and candidate fields but owns no decision. Candidate/review/main disposition never equals promotion. Controlled temporary-root evidence proves distinct create, update, merge, downgrade, reject, supersede, and retire plans with exact prestates, deltas, complete postimages, reciprocal links, immutable consumption history, human/custodian provenance, and false-postimage rejection. The real central library is not written by this behavior.
+
+Per-run learning and `task-docs/cases/` are source-only human evidence, not installed payload or runtime authority. They cannot modify Harness/calibration/protocol/template/profile/validator/test/package/state/topology, emit a global `MUST`, or launch an agent, Loop, Task, or enhancement. A reviewed case may inform a later human decision, but any Harness change still requires a new acceptance-closed Task and main-issued Boundary. Release and migration layers must preserve this separation and never create, adopt, remove, or promote cases automatically.
+
+## Source, Installed, And Currentness Boundary
+
+This source plane can be accepted independently as a runnable nine-capability Harness. That acceptance binds exact behavior evidence and affected-source/expectation manifests; it is not a whole-repository or installed/package identity.
+
+The current bundle map, generated payload, installer state, and release tests remain downstream currentness consumers until separately migrated and accepted. Later work that changes a behavior-shaping source names affected upstream Tasks/ACs, reruns primary evidence, and receives a main no-impact, reopen/reaccept, or supersession transition before acceptance. Only the release-integration owner may issue the final source-to-installed/package identity.
+
+## Router Traceability
+
+When shrinking a router, use source snapshots, coverage manifests, rule-preservation ledgers, and routing scenarios. scripts/validate_rule_preservation.py and scripts/validate_router_fixture.py check mechanical traceability only. Semantic review must still compare modal force, trigger, owner, required/forbidden action, stops, and safety boundary.

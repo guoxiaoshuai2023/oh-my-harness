@@ -43,14 +43,14 @@ test('T4-AC2 matrix completely and discriminatingly maps AS-01 through AS-12', (
   }
   const matrixText = JSON.stringify(SCENARIO_MATRIX);
   for (const required of [
-    'before mutation', 'again before success', 'deleted-backup non-recreation',
+    'OWNED_DRIFT', 'before mutation', 'restore-prior', 'finalize-target',
     'unmanaged namespace', 'unowned prefixed profile', 'exact dirty overlap', 'update-new-path collision',
     'Missing-half', 'duplicate', 'nested', 'reversed', 'damaged', 'lookalike',
     'Empty, absolute, NUL, traversal, symlink-parent', 'FIFO parent', 'force bypass',
   ]) assert(matrixText.includes(required), required);
 });
 
-test('AS-01 empty repository installs the complete fixed scoped release', async (t) => {
+test('AS-01 empty repository installs the complete current nine-profile scoped release', async (t) => {
   const { parent, target } = await targetFixture(t);
   const xdg = path.join(parent, 'xdg');
   await mkdir(xdg);
@@ -96,7 +96,11 @@ test('AS-01 empty repository installs the complete fixed scoped release', async 
   const scan = scanManagedBlock(agents);
   assert.equal(scan.status, 'owned-pair');
   assert.deepEqual(scan.interval, release.managedBlock);
-  assert.equal(release.inventory.ownership.agentPaths.length, 6);
+  assert.equal(release.inventory.requiredFiles.length, 49);
+  assert.equal(release.files.size, 51);
+  assert.equal(release.inventory.ownership.agentPaths.length, 9);
+  assert.equal(release.inventory.requiredFiles.filter(({ kind }) => kind === 'template').length, 17);
+  assert.equal(release.inventory.requiredFiles.some(({ assetId }) => assetId === 'template/task-contract'), false);
   const state = await readJson(target, STATE_PATH);
   assert.equal(state.verification.status, 'verified');
   assert.equal(state.installer.packageName, '@guoxiaoshuai2023/oh-my-harness');
@@ -210,7 +214,7 @@ test('AS-05 clean update replaces, removes, and creates exactly the planned path
   assert.equal(scanManagedBlock(await readFile(path.join(target, 'AGENTS.md'))).status, 'owned-pair');
 });
 
-test('AS-06 modified managed bytes require confirmation and two ordered backup verifications', async (t) => {
+test('AS-06 modified managed bytes stop update before backup or mutation even when confirmed', async (t) => {
   const { target } = await targetFixture(t);
   await applyReady('install', target, release);
   const changedPath = '.oh-my-harness/docs/architecture.md';
@@ -218,36 +222,18 @@ test('AS-06 modified managed bytes require confirmation and two ordered backup v
   await writeFile(path.join(target, ...changedPath.split('/')), modified);
   const next = cloneRelease(release, { version: '0.2.0', replace: { [changedPath]: 'clean release replacement\n' } });
 
-  const beforeDecline = await treeSnapshot(target);
-  const declined = await runLifecycle({ operation: 'update', target, release: next, confirmed: false });
-  assert.equal(declined.exitCode, 3);
-  assert.deepEqual(declined.planned.plan.modifiedManaged.map(({ path: itemPath }) => itemPath), [changedPath]);
-  assert.equal(declined.planned.plan.backups.length, 1);
-  assert.deepEqual(await treeSnapshot(target), beforeDecline);
-
-  const planned = await createLifecyclePlan({ operation: 'update', target, release: next });
-  const backupPath = planned.plan.backups[0].backupPath;
-  const events = [];
-  const restore = setFilesystemObserverForTests((event) => events.push(event));
-  try {
-    await applyLifecyclePlan({ planned, target, release: next });
-  } finally {
-    restore();
+  const before = await treeSnapshot(target);
+  for (const confirmed of [false, true]) {
+    const stopped = await runLifecycle({ operation: 'update', target, release: next, confirmed });
+    assert.equal(stopped.exitCode, 4);
+    assert.equal(stopped.planned.plan.status, 'CONFLICT');
+    assert.deepEqual(stopped.planned.plan.modifiedManaged.map(({ path: itemPath }) => itemPath), [changedPath]);
+    assert(stopped.planned.plan.conflicts.some(({ code, path: itemPath }) => (
+      code === 'OWNED_DRIFT' && itemPath === changedPath
+    )));
+    assert.deepEqual(stopped.planned.plan.backups, []);
+    assert.deepEqual(await treeSnapshot(target), before);
   }
-  assert.deepEqual(await readFile(path.join(target, ...backupPath.split('/'))), modified);
-  const backupReads = events.map((event, index) => ({ event, index }))
-    .filter(({ event }) => event.operation === 'open-read' && event.path === backupPath)
-    .map(({ index }) => index);
-  const replacement = events.findIndex((event) => event.operation === 'rename' && event.path === changedPath);
-  const stateCommit = events.findIndex((event) => event.operation === 'rename' && event.path === STATE_PATH);
-  assert(backupReads.some((index) => index < replacement), 'backup must verify before destructive replacement');
-  assert(backupReads.some((index) => index > replacement && index < stateCommit), 'backup must verify again before success state');
-  assert.equal((await readFile(path.join(target, ...changedPath.split('/')))).toString(), 'clean release replacement\n');
-  await unlink(path.join(target, ...backupPath.split('/')));
-  const noOp = await runLifecycle({ operation: 'update', target, release: next, confirmed: true });
-  assert.equal(noOp.exitCode, 0);
-  assert.equal(noOp.planned.plan.status, 'NO_OP');
-  assert.equal(await readFile(path.join(target, ...backupPath.split('/'))).catch(() => null), null);
 });
 
 test('AS-07 every install/update ownership collision stops with zero writes', async (t) => {
@@ -334,9 +320,15 @@ test('AS-09 safe uninstall preserves target content/backups, deletes state last,
   const driftPath = '.oh-my-harness/docs/architecture.md';
   const drift = Buffer.from('uninstall drift\n');
   await writeFile(path.join(target, ...driftPath.split('/')), drift);
+  const driftBefore = await treeSnapshot(target);
+  const driftPlan = await createLifecyclePlan({ operation: 'uninstall', target, release });
+  assert.equal(driftPlan.plan.status, 'CONFLICT');
+  assert(driftPlan.plan.conflicts.some(({ code, path: itemPath }) => code === 'OWNED_DRIFT' && itemPath === driftPath));
+  assert.deepEqual(driftPlan.plan.backups, []);
+  assert.deepEqual(await treeSnapshot(target), driftBefore);
+  await writeFile(path.join(target, ...driftPath.split('/')), release.files.get(driftPath));
   const planned = await createLifecyclePlan({ operation: 'uninstall', target, release });
   assert.equal(planned.plan.status, 'READY');
-  const backupPath = planned.plan.backups.find(({ sourcePath }) => sourcePath === driftPath).backupPath;
   const events = [];
   const restore = setFilesystemObserverForTests((event) => events.push(event));
   let result;
@@ -347,7 +339,7 @@ test('AS-09 safe uninstall preserves target content/backups, deletes state last,
   }
   assert.equal(result.report.success, true);
   assert.equal((await readFile(path.join(target, 'target-owned.txt'))).toString(), 'preserve me\n');
-  assert.deepEqual(await readFile(path.join(target, ...backupPath.split('/'))), drift);
+  assert(result.report.backups.some((backupPath) => backupPath.endsWith('.oh-my-harness/install-state.json.prior')));
   assert.equal((await readFile(path.join(target, 'AGENTS.md'))).toString(), 'target outer\n');
   assert.equal(await readFile(path.join(target, ...STATE_PATH.split('/'))).catch(() => null), null);
   for (const relativePath of release.files.keys()) {
@@ -374,9 +366,11 @@ test('AS-09 safe uninstall preserves target content/backups, deletes state last,
   assert.notEqual(failedResult.exitCode, 0);
   assert.equal(failedResult.report.success, false);
   assert.equal(failedResult.report.state, 'prior-preserved');
+  assert.equal(failedResult.report.recoveryOutcome, 'prior-restored');
   assert(await readFile(path.join(failed.target, ...STATE_PATH.split('/'))));
   const followUp = await createLifecyclePlan({ operation: 'uninstall', target: failed.target, release });
-  assert.equal(followUp.plan.status, 'INCOMPLETE_OR_UNOWNED');
+  assert.equal(followUp.plan.status, 'READY');
+  assert.equal(followUp.plan.recoveryAction, 'none');
 
   const preExisting = await targetFixture(t);
   await mkdir(path.join(preExisting.target, '.codex/agents'), { recursive: true });
@@ -461,26 +455,42 @@ test('AS-11 containment rejects the complete path/type matrix and every bypass',
   assert.throws(() => parseArguments(['install', '--target', '/tmp/repo', '--force']), /usage/);
 });
 
-test('AS-12 a capturable incomplete update reports truthfully and poisons the next invocation', async (t) => {
-  const { target } = await targetFixture(t);
-  await applyReady('install', target, release);
+test('AS-12 exact restart recovery restores partial prior state or finalizes a complete target', async (t) => {
   const changedPath = '.oh-my-harness/docs/architecture.md';
-  const modified = Buffer.from('modified before incomplete update\n');
-  await writeFile(path.join(target, ...changedPath.split('/')), modified);
   const next = cloneRelease(release, { version: '0.2.0', replace: { [changedPath]: 'next release\n' } });
-  const result = await runLifecycle({
-    operation: 'update', target, release: next, confirmed: true,
-    faults: [`payload-write:${changedPath}`],
+
+  const partial = await targetFixture(t);
+  await applyReady('install', partial.target, release);
+  const partialResult = await runLifecycle({
+    operation: 'update', target: partial.target, release: next, confirmed: true,
+    faults: [`payload-write:${changedPath}`, 'rollback-start'],
   });
-  assert.notEqual(result.exitCode, 0);
-  assert.equal(result.report.success, false);
-  assert.equal(result.report.sentinel, 'present');
-  assert.equal(result.report.state, 'prior-preserved');
-  assert(result.report.unchanged.includes(changedPath));
-  assert(!result.report.changed.includes(changedPath));
-  assert.equal(result.report.backups.length, 1);
-  assert.deepEqual(await readFile(path.join(target, ...result.report.backups[0].split('/'))), modified);
-  assert.deepEqual(await readFile(path.join(target, ...changedPath.split('/'))), modified);
-  const followUp = await createLifecyclePlan({ operation: 'update', target, release: next });
-  assert.equal(followUp.plan.status, 'INCOMPLETE_OR_UNOWNED');
+  assert.notEqual(partialResult.exitCode, 0);
+  assert.equal(partialResult.report.success, false);
+  assert.equal(partialResult.report.sentinel, 'present');
+  const restorePlan = await createLifecyclePlan({ operation: 'update', target: partial.target, release: next });
+  assert.equal(restorePlan.plan.status, 'READY');
+  assert.equal(restorePlan.plan.recoveryAction, 'restore-prior');
+  const restored = await applyLifecyclePlan({ planned: restorePlan, target: partial.target, release: next });
+  assert.equal(restored.report.recoveryOutcome, 'prior-restored');
+  assert.equal(restored.report.updateApplied, false);
+  const fresh = await createLifecyclePlan({ operation: 'update', target: partial.target, release: next });
+  assert.equal(fresh.plan.status, 'READY');
+  assert.equal(fresh.plan.recoveryAction, 'none');
+
+  const complete = await targetFixture(t);
+  await applyReady('install', complete.target, release);
+  const completeResult = await runLifecycle({
+    operation: 'update', target: complete.target, release: next, confirmed: true,
+    faults: ['sentinel-delete', 'rollback-start'],
+  });
+  assert.notEqual(completeResult.exitCode, 0);
+  assert.equal(completeResult.report.success, false);
+  const finalizePlan = await createLifecyclePlan({ operation: 'update', target: complete.target, release: next });
+  assert.equal(finalizePlan.plan.status, 'READY');
+  assert.equal(finalizePlan.plan.recoveryAction, 'finalize-target');
+  const finalized = await applyLifecyclePlan({ planned: finalizePlan, target: complete.target, release: next });
+  assert.equal(finalized.report.recoveryOutcome, 'target-finalized');
+  assert.equal(finalized.report.updateApplied, true);
+  assert.equal((await createLifecyclePlan({ operation: 'update', target: complete.target, release: next })).plan.status, 'NO_OP');
 });

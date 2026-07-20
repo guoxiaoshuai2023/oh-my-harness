@@ -115,10 +115,9 @@ test('mutation-boundary parent swaps stop before any outside write or deletion',
     const fixture = await targetFixture(subtest);
     await install(fixture.target);
     const managedPath = '.oh-my-harness/docs/architecture.md';
-    await writeFile(path.join(fixture.target, ...managedPath.split('/')), 'drift requiring backup\n');
     const next = cloneRelease(release, { version: '0.2.0', replace: { [managedPath]: 'replacement\n' } });
     const planned = await createLifecyclePlan({ operation: 'update', target: fixture.target, release: next });
-    const backupPath = planned.plan.backups[0].backupPath;
+    const backupPath = planned.plan.backups.find((item) => item.sourcePath === managedPath).backupPath;
     const outside = path.join(fixture.parent, 'outside-backups');
     await mkdir(outside);
     let swapped = false;
@@ -581,11 +580,14 @@ test('special unrelated Git objects are observed and stop within the bounded Git
 
 test('disclosure, state, reports, and logs are content-safe while backup bytes stay opaque and exact', async (t) => {
   const { target } = await targetFixture(t);
-  await install(target);
   const managedPath = '.oh-my-harness/docs/architecture.md';
   const syntheticSensitiveBytes = Buffer.from('fixture-sensitive-value-that-must-not-be-disclosed\n');
-  await writeFile(path.join(target, ...managedPath.split('/')), syntheticSensitiveBytes);
-  const next = cloneRelease(release, { version: '0.2.0', replace: { [managedPath]: 'released\n' } });
+  const sensitiveRelease = cloneRelease(release, {
+    version: '0.1.1', replace: { [managedPath]: syntheticSensitiveBytes },
+  });
+  const installPlan = await createLifecyclePlan({ operation: 'install', target, release: sensitiveRelease });
+  await applyLifecyclePlan({ planned: installPlan, target, release: sensitiveRelease });
+  const next = cloneRelease(sensitiveRelease, { version: '0.2.0', replace: { [managedPath]: 'released\n' } });
   const planned = await createLifecyclePlan({ operation: 'update', target, release: next });
   const serializedPlan = canonicalBytes(planned.envelope).toString();
   assert(!serializedPlan.includes(syntheticSensitiveBytes.toString().trim()));
@@ -594,7 +596,7 @@ test('disclosure, state, reports, and logs are content-safe while backup bytes s
   const state = await readFile(path.join(target, ...STATE_PATH.split('/')));
   assert(!serializedReport.includes(syntheticSensitiveBytes.toString().trim()));
   assert(!state.includes(syntheticSensitiveBytes));
-  const backup = planned.plan.backups[0].backupPath;
+  const backup = planned.plan.backups.find((item) => item.sourcePath === managedPath).backupPath;
   assert.deepEqual(await readFile(path.join(target, ...backup.split('/'))), syntheticSensitiveBytes);
 });
 

@@ -1,6 +1,6 @@
 # Bundle Lifecycle Specification
 
-This release-repository-only specification defines the supported target lifecycle for the oh-my-harness package. It documents the accepted package behavior; it does not add recovery, publication, or installation modes.
+This release-repository-only specification defines the supported target lifecycle for the oh-my-harness package. It documents the accepted package behavior, including bounded same-operation recovery; it adds no recovery command, publication authority, legacy selector, or installation mode.
 
 ## Fixed Identities And Runtime
 
@@ -14,9 +14,17 @@ This release-repository-only specification defines the supported target lifecycl
 
 The package name, binary, payload namespace, and agent prefix are distinct identities. Manual copying, an unscoped package command, a global install, or another runtime does not establish this lifecycle.
 
+## Terminal Source Gate Before Release Work
+
+Every release-shaping source byte, including tests and release tooling, is finalized before one main-owned terminal source gate binds an exact changed-source manifest and the applicable upstream currentness transitions. Bundle generation, installation, and packing remain locked until that gate is strict green. Any later source delta invalidates the gate and discards all generated, installed, and packed evidence before a new manifest and gate may be issued.
+
+Release tooling requires `OH_MY_HARNESS_SOURCE_GATE_RECEIPT` to name an absolute, main-issued JSON receipt and `OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256` to bind its exact bytes. The closed receipt binds `SOURCE_GATED` state, source realpath, Git HEAD, gate/report identities, exactly three upstream transition identities, and a byte-ordered source-path/SHA-256 manifest plus its aggregate SHA-256. Before every build/package validation, tooling reopens each named source file, rejects missing/symlinked/changed bytes, and requires the aggregate to match. A receipt cannot authorize a different checkout or survive a source delta.
+
+The current unified release is the exact Architecture set: nine profiles, 17 templates, 49 unique required mapped payloads, and 51 generated files (49 payloads plus the managed router and inventory). Those figures support exact membership and behavior evidence; they are never semantic acceptance by themselves. Active Contract/full-v2/legacy workflow assets, Run artifacts, Context/Board, learning/cases, runtime outboxes, and generic Target Repository Architecture product assets are excluded. Historical Run Contract bytes remain outside the release and readable in their original repositories.
+
 ## Separate Authority Planes
 
-The release plane fixes what a package contains. `packaging/bundle-map.json` maps release sources to installed destinations. The built `.oh-my-harness/bundle-inventory.json` is immutable and fixes package/version compatibility, every required destination and hash, the exact six installed agent paths, managed-block identity, ownership lists, and reference policy. It has no optional payload entries.
+The release plane fixes what a package contains. `packaging/bundle-map.json` maps release sources to installed destinations. The built `.oh-my-harness/bundle-inventory.json` is immutable and fixes package/version compatibility, every required destination and hash, the exact nine installed agent paths, managed-block identity, ownership lists, and reference policy. It has no optional payload entries.
 
 The target lifecycle plane decides whether those bytes may change a repository. Lifecycle code owns plan creation, conflict status, confirmation, containment, write order, verification, and result reporting. It may act only from current target evidence plus validated state reconciled with the installed immutable inventory.
 
@@ -24,7 +32,7 @@ The evidence plane contains tests, fixtures, package validation, hashes, TOML pa
 
 ## Mutable State And Exact Ownership
 
-`.oh-my-harness/install-state.json` is mutable canonical target state. It records installed and bundle versions, installer identity, a canonical-target hash, operation metadata, exact owned files and hashes, the six agent records, managed-block mode/hash, verification status, and backups created by the current successful install or update.
+`.oh-my-harness/install-state.json` is mutable canonical target state. It records installed and bundle versions, installer identity, a canonical-target hash, operation metadata, exact owned files and hashes, the nine agent records, managed-block mode/hash, verification status, and backups created by the current successful install or update.
 
 State is deliberately non-self-hashing. `ownedFiles` includes the installed immutable inventory and exact payload files, but never `install-state.json` itself. The state is valid only when its ownership exactly reconciles with the installed inventory and its target, package, version, agent, and managed-block identities validate.
 
@@ -45,6 +53,8 @@ Every operation first canonicalizes the target, validates the release inventory,
 
 An unowned collision, damaged marker, unsafe path, exact dirty overlap outside validated ownership, incompatible inventory/state, or unverifiable ownership stops. There is no merge, name-based adoption, capability reconciliation, or ownership inference.
 
+The lifecycle recognizes exactly two installed-input classes: strict current nine/49 state, and the exact historical six-profile/42-entry inventory/state/payload/marker identity. Only `update` may consume the historical class. `install` does not adopt it, prior-state uninstall is not added, and no legacy runtime remains after conversion. The exact transition creates eight target paths, removes only the prior-owned obsolete Contract template, replaces only clean prior-owned bytes, and publishes target-only state.
+
 ## Managed Block And Authority Conflict
 
 The two reserved markers must be byte-exact, occur once each, and be ordered. Install appends the release block only when no reserved marker exists. Update replaces only the owned interval. Uninstall removes only that interval and its following LF when present, preserving the exact outer prefix and suffix.
@@ -53,7 +63,7 @@ Target-repository instructions outside the block remain effective alongside the 
 
 ## Drift, Backup, And Confirmation
 
-Current bytes of every old owned file and the managed block are compared with validated state. Modified managed content is listed in `modifiedManaged`, including its path, kind, expected hash, and current hash. The plan also lists the deterministic backup destination `.oh-my-harness-backups/<operation-id>/<source-path>`; managed-block bytes use `AGENTS.md.managed-block` as the suffix.
+Current bytes of every old owned file and the managed block are compared with validated state. Modified managed content is listed in `modifiedManaged`, including its path, kind, expected hash, and current hash, and stops as `OWNED_DRIFT` before mutation. Missing owned content stops as `MISSING_OWNED_SURFACE`. Backups never turn drift into authority. For a clean transition, the plan lists deterministic rollback backups at `.oh-my-harness-backups/<operation-id>/<source-path>`; managed-block and prior-state bytes use fixed noncolliding suffixes.
 
 The plan is printed before any mutation. Only `READY` may apply. `--dry-run` returns after printing. Without `--yes`, a TTY asks exactly once and a non-TTY does not mutate. Before applying, the CLI recreates the plan and requires identical canonical plan bytes, plan hash, paths, and target fingerprints.
 
@@ -77,7 +87,7 @@ For every mutating operation, the order is:
 6. For install/update, write, parse, publish, and verify canonical install state last. For uninstall, verify owned removal and outer bytes, then delete state last.
 7. Delete and verify absence of the operation sentinel. Only then report success.
 
-A capturable failure never claims success. The result identifies changed and unchanged paths, recognized temporary residue, sentinel state, state status, created backups, and a safe error path/reason. Update and uninstall preserve or restore exact prior state where specified; failure to do so remains a hard failure. A later invocation that sees a sentinel, recognized temporary, unmanaged namespace, missing owned surface, or payload/state mismatch returns `INCOMPLETE_OR_UNOWNED` and does not attempt generalized recovery.
+A capturable failure never claims success. It identifies changed/unchanged paths, temporary residue, sentinel/state status, verified or unverified backups, a safe error, and any bounded rollback outcome. After sentinel publication the process makes one rollback attempt and reports the original operation as failed even when exact prior state is restored. If interruption evidence remains, only the same operation and exact requested release may preview `finalize-target` when target state/payload is complete or `restore-prior` when every touched byte and backup proves rollback. Missing/stale/mismatched/third-state evidence stops as an explicit recovery conflict without mutation. The sentinel is deleted last; it is never discarded to manufacture success.
 
 ## No-Op And State-Last Rules
 
@@ -98,4 +108,4 @@ npx --yes --package=./<packed-archive>.tgz oh-my-harness <operation> --target <r
 
 Local `.tgz` smoke, fixtures, tests, hashes, and package validation can demonstrate a reproducible local release candidate. The repository and packed npm package carry Apache-2.0, while the installed `.oh-my-harness/` payload does not include `LICENSE`. Local evidence does not establish npm scope access or ownership, credentials, signing, publication, release creation, or external-write approval. Those remain later owner-controlled release actions.
 
-Structural checks are never semantic proof. Hash equality proves byte equality, parsing proves shape, and fixtures prove their encoded scenarios. Adaptive default, required full v2, evidence-backed deliberate full v2, fact-triggered gates, finite retries/intervention, main-thread final authority, and the absence of a fixed seventh agent must still be reviewed for preserved meaning and modal force.
+Structural checks are never semantic proof. Hash equality proves byte equality, parsing proves shape, and fixtures prove their encoded scenarios. The unified source governance plane uses nine fact-selected optional capabilities, unconditional no-fan-out, Technical-Design-only Solution roles, main-owned Boundaries, evaluator-owned reports, finite retry/intervention, and main final authority. Installed and package evidence must execute those behaviors from unchanged physical destination bytes against an independent Frozen-AC oracle; an inventory, count, source fallback, or producer-authored semantic ledger cannot substitute.

@@ -44,7 +44,7 @@ export async function verifyInstalledResult({ target, release, expectedOuter }) 
     state: state.verification.status === 'verified'
       && state.ownedFiles.length === release.files.size,
     managedBlock: scan.status === 'owned-pair' && scan.interval.equals(release.managedBlock),
-    profiles: profiles.length === 6 && profiles.every((text) => (
+    profiles: profiles.length === 9 && profiles.every((text) => (
       /^name\s*=\s*"[^"]+"/m.test(text)
       && /^description\s*=\s*"[^"]+"/m.test(text)
       && /^developer_instructions\s*=\s*"""/m.test(text)
