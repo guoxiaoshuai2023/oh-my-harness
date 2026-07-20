@@ -2,8 +2,8 @@ export const SCENARIO_MATRIX = [
   {
     id: 'AS-01', acs: ['T4-AC2', 'T4-AC3', 'T4-AC6', 'T4-AC8', 'T4R-AC1'],
     setup: 'A fresh isolated target receives literal git init and proves unborn symbolic HEAD, absent index and branch ref, no commit, and zero tracked files before using the locally built scoped 0.1.0 release.',
-    expectedDecision: 'READY then success with the fixed payload, one managed block, six profiles, verified state, no sentinel, and byte-identical .git metadata.',
-    primaryEvidence: 'Git symbolic-ref/rev-parse/ls-files assertions and pre/post .git tree hashes accompany exact release bytes, marker scan, six profiles, installer identity, and verified state.',
+    expectedDecision: 'READY then success with the exact current 49 payloads, one managed block, nine profiles, verified state, no sentinel, and byte-identical .git metadata.',
+    primaryEvidence: 'Git symbolic-ref/rev-parse/ls-files assertions and pre/post .git tree hashes accompany exact release bytes, marker scan, nine profiles, installer identity, and verified state.',
     failureSignals: 'IO_UNAVAILABLE, dirty-overlap bypass, Git metadata mutation, a commit/index/tracked file, missing payload, wrong scoped identity, wrong profile count, or retained sentinel.',
   },
   {
@@ -36,10 +36,10 @@ export const SCENARIO_MATRIX = [
   },
   {
     id: 'AS-06', acs: ['T4-AC2', 'T4-AC3'],
-    setup: 'One modified state-owned file followed by a release replacement and an explicit decline/confirm sequence.',
-    expectedDecision: 'Modification and deterministic backup are disclosed; decline writes nothing; confirmation writes/verifies backup before mutation and again before success.',
-    primaryEvidence: 'Plan disclosure, exact backup bytes, ordered filesystem events, successful replacement, and deleted-backup non-recreation on no-op.',
-    failureSignals: 'Undisclosed drift, mutation before backup verification, backup mismatch, no second verification, or backup recreation after user deletion.',
+    setup: 'One modified state-owned file followed by update preview and a confirmed run attempt against a release replacement.',
+    expectedDecision: 'OWNED_DRIFT is disclosed and both preview and confirmed execution stop before mutation; no backup is treated as overwrite authority.',
+    primaryEvidence: 'Path-specific drift conflict, zero planned backups, byte-identical tree before/after preview and confirmed run, and non-success exit.',
+    failureSignals: 'READY, mutation, backup creation, drift overwrite, missing path-specific signal, or confirmation bypass.',
   },
   {
     id: 'AS-07', acs: ['T4-AC2', 'T4-AC3'],
@@ -57,10 +57,10 @@ export const SCENARIO_MATRIX = [
   },
   {
     id: 'AS-09', acs: ['T4-AC2', 'T4-AC3'],
-    setup: 'Installed targets covering Harness-created parents, pre-existing parents, target-populated parents, target-owned content and drift requiring backup, plus an injected final state-delete failure fixture.',
-    expectedDecision: 'Successful uninstall removes only state-owned payload/block and recorded empty Harness-created parents, preserves and reports pre-existing/non-empty parents and target content/backups, and removes state last; injected final delete reports failure.',
-    primaryEvidence: 'Recorded directory ownership, removed/preserved directory report fields, ordered mutation events, exact preserved bytes, state/payload absence, backup survival, and non-success failure report.',
-    failureSignals: 'Target-content or backup loss, retained empty Harness-created parents, removed pre-existing/non-empty parents, unreported residue, early state deletion, retained successful state, or false success on injected failure.',
+    setup: 'Installed targets covering owned drift, Harness-created parents, pre-existing parents, target-populated parents, target-owned content, and an injected final state-delete failure fixture.',
+    expectedDecision: 'Drift stops before mutation; clean uninstall removes only state-owned payload/block and recorded empty Harness-created parents, preserves target content/backups, and removes state last; injected failure rolls back without false success.',
+    primaryEvidence: 'OWNED_DRIFT zero-write snapshot, directory ownership, removed/preserved report fields, ordered mutation events, exact preserved bytes, state/payload absence, backup survival, and non-success rollback report.',
+    failureSignals: 'Drift overwrite, target-content or backup loss, wrong parent removal, early state deletion, retained successful state, missing rollback, or false success.',
   },
   {
     id: 'AS-10', acs: ['T4-AC2', 'T4-AC4', 'T4-AC7'],
@@ -78,9 +78,9 @@ export const SCENARIO_MATRIX = [
   },
   {
     id: 'AS-12', acs: ['T4-AC2', 'T4-AC3'],
-    setup: 'A modified managed update with a capturable payload-write fault after backup/sentinel publication.',
-    expectedDecision: 'Success is withheld; report distinguishes changed/unchanged paths, preserves exact backup/evidence, and next invocation stops unhealthy.',
-    primaryEvidence: 'Nonzero lifecycle result, false success report, unchanged replacement path, exact backup, present sentinel, and follow-up INCOMPLETE_OR_UNOWNED.',
-    failureSignals: 'Success, missing/mismatched backup, false changed-path claim, absent incomplete evidence, or follow-up READY.',
+    setup: 'Clean updates interrupted after partial payload and after target-state publication, with same-process rollback deliberately interrupted to retain exact sentinel evidence.',
+    expectedDecision: 'Success is withheld; same-operation restart previews restore-prior for partial state or finalize-target for complete target, then verifies and removes sentinel last.',
+    primaryEvidence: 'False original success, exact backups/sentinel, recoveryAction decisions, prior/target physical readback, updateApplied truth, and post-recovery READY or NO_OP.',
+    failureSignals: 'Fabricated original success, generic repair, wrong recovery action, missing backup accepted, third state mutated, sentinel removed early, or unresolved follow-up.',
   },
 ];

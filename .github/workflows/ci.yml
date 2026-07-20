@@ -10,8 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  source-gate:
     runs-on: ubuntu-latest
+    outputs:
+      receipt: ${{ steps.receipt.outputs.receipt }}
+      receipt_sha256: ${{ steps.receipt.outputs.receipt_sha256 }}
 
     steps:
       - name: Check out repository
@@ -50,34 +53,48 @@ jobs:
 
           expected = {
               "harness-executor.toml",
+              "harness-orchestration-reviewer.toml",
               "harness-plan-evaluator.toml",
               "harness-planner.toml",
+              "harness-requirements-author.toml",
+              "harness-requirements-evaluator.toml",
               "harness-result-evaluator.toml",
               "harness-solution-designer.toml",
               "harness-solution-evaluator.toml",
           }
           paths = sorted(Path(".codex/agents").glob("*.toml"))
           assert {path.name for path in paths} == expected
+          report_capable = {
+              "harness-orchestration-reviewer.toml",
+              "harness-plan-evaluator.toml",
+              "harness-requirements-evaluator.toml",
+              "harness-result-evaluator.toml",
+              "harness-solution-evaluator.toml",
+          }
+          descriptions = set()
           for path in paths:
               with path.open("rb") as handle:
                   data = tomllib.load(handle)
-              if "evaluator" in path.name:
-                  assert data["sandbox_mode"] == "read-only", path
-                  prompt = data["developer_instructions"]
-                  required = [
-                      "canonical evaluator-calibration identity and path",
-                      "STOP before review",
-                      "Consult that supplied canonical source before deciding",
-                      "never substitutes for primary",
-                      "Consulted calibration path",
-                      "Relevant calibration case IDs",
-                      "do not edit, repair, complete",
-                  ]
-                  for text in required:
+              assert set(data) <= {
+                  "name", "description", "sandbox_mode", "developer_instructions"
+              }, path
+              assert data["sandbox_mode"] == "workspace-write", path
+              descriptions.add(data["description"])
+              prompt = data["developer_instructions"]
+              assert "must not create, invoke, launch, delegate to, or reconfigure another agent" in prompt, path
+              assert "nested delegation" not in prompt.lower(), path
+              if path.name in report_capable:
+                  for text in [
+                      "logical report-only write boundary plus post-execution verification",
+                      "canonical evaluator calibration identity and path",
+                      "strict PASS or FAIL",
+                      "primary evidence",
+                  ]:
                       assert text in prompt, (path, text)
+          assert len(descriptions) == 9
           print(
-              "parsed exactly six Codex agent profiles; "
-              "evaluator read-only/calibration invariants passed"
+              "parsed exactly nine Codex capability profiles; "
+              "hard no-fan-out and report-capable evaluator invariants passed"
           )
           PY
 
@@ -87,127 +104,39 @@ jobs:
             --router AGENTS.md \
             --fixture task-docs/_harness/templates/routing-scenario-matrix-template.md
 
-      - name: Validate adaptive orchestration structure
+      - name: Validate unified source-governance structure
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          def markdown_cells(row: str) -> list[str]:
-              return [cell.strip() for cell in row.strip().strip("|").split("|")]
-
-          matrix_path = Path("task-docs/_harness/adaptive-orchestration-acceptance-matrix.md")
-          matrix_lines = matrix_path.read_text(encoding="utf-8").splitlines()
-
-          as_rows = [line for line in matrix_lines if re.match(r"^\| AS-\d{2} \|", line)]
-          assert len(as_rows) == 31
-          assert [markdown_cells(row)[0] for row in as_rows] == [
-              f"AS-{number:02d}" for number in range(1, 32)
-          ]
-          assert all(len(markdown_cells(row)) == 11 for row in as_rows)
-          assert all(markdown_cells(row)[-1] == "PASS" for row in as_rows)
-          assert not any(line.startswith("| AS-32 |") for line in matrix_lines)
-
-          cc_rows = [line for line in matrix_lines if re.match(r"^\| CC-", line)]
-          expected_cc = [
-              "CC-LOW",
-              "CC-MEDIUM",
-              "CC-HIGH",
-              "CC-FULL-V2",
-              "CC-NEGATIVE",
-              "CC-DELIBERATE-FULL-V2",
-          ]
-          assert [markdown_cells(row)[0] for row in cc_rows] == expected_cc
-          cc_decisions = {markdown_cells(row)[0]: markdown_cells(row)[-1] for row in cc_rows}
-          assert cc_decisions["CC-NEGATIVE"] == "FAIL"
-          assert cc_decisions["CC-DELIBERATE-FULL-V2"].startswith("PASS")
-          assert sum(
-              "packet applies the combined evaluator interface" in line
-              for line in matrix_lines
-          ) == 8
-
-          task_packet = Path(
-              "task-docs/_harness/templates/task-packet-template.md"
-          ).read_text(encoding="utf-8")
+          adaptive = Path("task-docs/_harness/adaptive-orchestration-protocol.md").read_text(encoding="utf-8")
+          packet = Path("task-docs/_harness/templates/task-packet-template.md").read_text(encoding="utf-8")
+          calibration = Path("task-docs/_harness/evaluator-calibration.md").read_text(encoding="utf-8")
+          matrix = Path("task-docs/_harness/adaptive-orchestration-acceptance-matrix.md").read_text(encoding="utf-8")
           for text in [
-              "Canonical evaluator-calibration identity:",
-              "Canonical evaluator-calibration path:",
-              "consult the canonical evaluator-calibration source above before deciding",
-              "Consulted calibration path:",
-              "Relevant calibration case IDs:",
-              "must `STOP` before launch",
+              "Requirements Author", "Requirements Evaluator", "Planner", "Plan Evaluator",
+              "Solution Designer", "Solution Evaluator", "Executor", "Result Evaluator",
+              "Orchestration Reviewer", "There are no selectable mode labels",
+              "Every capability is hard no-fan-out", "Main-Exclusive Authority",
+              "Integrity Precedence And Report Recovery",
           ]:
-              assert text in task_packet, text
-
-          topology_surfaces = {
-              Path("task-docs/_harness/templates/orchestration-prompt-template.md"): [
-                  "Adaptive default — MUST",
-                  "Required complete v2 — MUST",
-                  "Deliberate complete v2 — MAY",
-              ],
-              Path("task-docs/_harness/templates/plan-review-template.md"): [
-                  "Adaptive-default state `MUST`",
-                  "Required-complete-v2 state `MUST`",
-                  "Deliberate-complete-v2 state `MAY`",
-              ],
-              Path("task-docs/_harness/templates/result-qa-template.md"): [
-                  "Adaptive-default state `MUST`",
-                  "Required-complete-v2 state `MUST`",
-                  "Deliberate-complete-v2 state `MAY`",
-              ],
-          }
-          for path, required in topology_surfaces.items():
-              text = path.read_text(encoding="utf-8")
-              for marker in required:
-                  assert marker in text, (path, marker)
-
-          calibration = Path("task-docs/_harness/evaluator-calibration.md").read_text(
-              encoding="utf-8"
-          )
-          adaptive_headings = re.findall(
-              r"^### Case (CAL-ADAPT-\d{3}) - ", calibration, re.MULTILINE
-          )
-          assert adaptive_headings == [f"CAL-ADAPT-{number:03d}" for number in range(1, 11)]
-          required_fields = [
-              "Case id:",
-              "Category:",
-              "Case type:",
-              "Applies to:",
-              "Task pattern / bad pattern:",
-              "Evaluator incorrectly decided:",
-              "Expected decision:",
-              "Why it fails:",
-              "Controlling rule:",
-              "Missing evidence / evidence needed:",
-              "Required evaluator/main-thread response:",
-              "New evaluator rule:",
-              "Reusable positive/negative case:",
-              "Relevant prompt/template targets:",
-          ]
-          for index, case_id in enumerate(adaptive_headings):
-              start = calibration.index(f"### Case {case_id} - ")
-              if index + 1 < len(adaptive_headings):
-                  end = calibration.index(f"### Case {adaptive_headings[index + 1]} - ")
-              else:
-                  end = len(calibration)
-              section = calibration[start:end]
-              for field in required_fields:
-                  assert section.count(field) == 1, (case_id, field)
-
-          surfaces = [
-              Path("task-docs/_harness/templates/routing-scenario-matrix-template.md"),
-              Path("README.md"),
-              Path("docs/architecture.md"),
-              Path("docs/adoption/router-refactor-runbook.md"),
-              Path("examples/minimal-router/AGENTS.md"),
-          ]
-          for path in surfaces:
-              text = path.read_text(encoding="utf-8")
-              assert "smallest sufficient" in text, path
-              assert "MUST" in text, path
-              assert "stricter" in text and "policy" in text, path
-              assert "MAY" in text, path
-              assert "deliberate" in text.lower(), path
+              assert text in adaptive, text
+          for text in [
+              "Hard No-Fan-Out", "Candidate Or Producer Report Binding",
+              "Evaluator Report Binding", "logical report-only write boundary plus post-execution verification",
+              "new invocation and new absent path",
+          ]:
+              assert text in packet, text
+          for case_id in [
+              "CAL-ADAPT-011", "CAL-ADAPT-012", "CAL-ADAPT-013",
+              "CAL-ADAPT-014", "CAL-ADAPT-015", "CAL-ADAPT-016",
+          ]:
+              assert case_id in calibration, case_id
+          for scenario in [
+              "AO-001", "AO-003", "AO-004", "DS-003", "LC-001",
+              "RC-001", "BD-004", "RP-007", "SO-005",
+          ]:
+              assert scenario in matrix, scenario
 
           validator = Path("scripts/validate_router_fixture.py").read_text(encoding="utf-8")
           assert "not a semantic equivalence verifier" in validator
@@ -215,7 +144,7 @@ jobs:
           assert "rule-preservation proof" in validator
 
           print(
-              "adaptive structure and repaired invocation invariants passed; "
+              "unified source-governance structure and lifecycle invariants passed; "
               "structural checks and router smoke are not semantic proof"
           )
           PY
@@ -240,8 +169,125 @@ jobs:
           }
           NODE
 
+      - name: Run source governance behavior tests
+        run: node --test test/governance/*.test.mjs
+
+      - name: Run complete bundle source-gate tests
+        run: node --test test/bundle/*.test.mjs
+
+      - name: Verify exact source release contract without generation
+        run: |
+          node --input-type=module - <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFile } from 'node:fs/promises';
+          import {
+            TARGET_PROJECTION_SHA256,
+            TARGET_REQUIRED_PROJECTION_SHA256,
+            assertBundleMap,
+            bundleProjection,
+          } from './src/bundle/validation.mjs';
+
+          const map = JSON.parse(await readFile('packaging/bundle-map.json'));
+          assertBundleMap(map);
+          assert.equal(createHash('sha256').update(bundleProjection(map.entries)).digest('hex'), TARGET_PROJECTION_SHA256);
+          assert.equal(createHash('sha256').update(bundleProjection(map.entries, true)).digest('hex'), TARGET_REQUIRED_PROJECTION_SHA256);
+          assert.equal(map.entries.length, 49);
+          assert.equal(map.entries.filter(({ kind }) => kind === 'template').length, 17);
+          assert.equal(map.entries.filter(({ kind }) => kind === 'agent-profile').length, 9);
+          assert.equal(map.entries.some(({ assetId }) => assetId === ['template', 'task-contract'].join('/')), false);
+          NODE
+          node --test test/acceptance/release-equivalence.test.mjs
+
+      - name: Issue exact terminal source-gate receipt
+        id: receipt
+        env:
+          T01_CURRENTNESS: 0efc81242e490680464885c2ee4c916341c3844efa708fd8aa988261890c48e2
+          T02_CURRENTNESS: 3048ff5d4a45097212411ea9e1a0df148bb369372e46644412f3436b49a94714
+          T03_CURRENTNESS: 798bc74b2918666ded7e1d4ed192dcaba514570864fab400cd9e79cffcf2f8ad
+        run: |
+          mkdir "$RUNNER_TEMP/oh-my-harness-source-gate"
+          node --input-type=module - <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+          const sourceFiles = execFileSync('git', ['ls-files', '-z'])
+            .toString('utf8').split('\0').filter(Boolean)
+            .sort((left, right) => Buffer.from(left).compare(Buffer.from(right)))
+            .map((file) => ({ path: file, sha256: sha256(readFileSync(file)) }));
+          const finalSourceManifestSha256 = sha256(Buffer.from(
+            `${sourceFiles.map((entry) => `${entry.path}\t${entry.sha256}`).join('\n')}\n`,
+          ));
+          const gateReport = Buffer.from([
+            'CI terminal source gate: strict PASS',
+            `gitHead=${process.env.GITHUB_SHA}`,
+            `finalSourceManifestSha256=${finalSourceManifestSha256}`,
+            'release generation/package/install not run before this receipt',
+            '',
+          ].join('\n'));
+          const reportPath = path.join(process.env.RUNNER_TEMP, 'oh-my-harness-source-gate', 'gate-report.txt');
+          writeFileSync(reportPath, gateReport, { flag: 'wx' });
+          const receipt = {
+            schemaVersion: 1,
+            state: 'SOURCE_GATED',
+            gateIdentity: `ci-source-gate:${process.env.GITHUB_SHA}:${finalSourceManifestSha256}`,
+            gateReportSha256: sha256(gateReport),
+            gitHead: process.env.GITHUB_SHA,
+            sourceRootRealpath: realpathSync(process.env.GITHUB_WORKSPACE),
+            upstreamTransitions: [process.env.T01_CURRENTNESS, process.env.T02_CURRENTNESS, process.env.T03_CURRENTNESS],
+            finalSourceManifestSha256,
+            sourceFiles,
+          };
+          const receiptPath = path.join(process.env.RUNNER_TEMP, 'oh-my-harness-source-gate', 'receipt.json');
+          const receiptBytes = Buffer.from(`${JSON.stringify(receipt)}\n`);
+          writeFileSync(receiptPath, receiptBytes, { flag: 'wx' });
+          writeFileSync(process.env.GITHUB_OUTPUT, [
+            `receipt=${receiptBytes.toString('base64')}`,
+            `receipt_sha256=${sha256(receiptBytes)}`,
+            '',
+          ].join('\n'), { flag: 'a' });
+          NODE
+
+  release:
+    needs: source-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact gated repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js 24.14.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Restore and verify terminal source-gate receipt
+        env:
+          SOURCE_GATE_RECEIPT_BASE64: ${{ needs.source-gate.outputs.receipt }}
+          OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256: ${{ needs.source-gate.outputs.receipt_sha256 }}
+        run: |
+          SOURCE_GATE_ROOT="$RUNNER_TEMP/oh-my-harness-source-gate"
+          mkdir "$SOURCE_GATE_ROOT"
+          printf '%s' "$SOURCE_GATE_RECEIPT_BASE64" | base64 --decode > "$SOURCE_GATE_ROOT/receipt.json"
+          echo "OH_MY_HARNESS_SOURCE_GATE_RECEIPT=$SOURCE_GATE_ROOT/receipt.json" >> "$GITHUB_ENV"
+          echo "OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256=$OH_MY_HARNESS_SOURCE_GATE_RECEIPT_SHA256" >> "$GITHUB_ENV"
+          OH_MY_HARNESS_SOURCE_GATE_RECEIPT="$SOURCE_GATE_ROOT/receipt.json" \
+            node --input-type=module -e "import { verifyTerminalSourceGate } from './tools/validate-release.mjs'; await verifyTerminalSourceGate();"
+
       - name: Run accepted bundle and lifecycle tests
         run: npm test
+
+      - name: Reverify terminal source-gate receipt after npm test
+        run: node --input-type=module -e "import { verifyTerminalSourceGate } from './tools/validate-release.mjs'; await verifyTerminalSourceGate();"
 
       - name: Run Universal Harness acceptance scenarios
         run: node --test test/acceptance/*.test.mjs

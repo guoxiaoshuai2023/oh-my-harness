@@ -22,11 +22,11 @@ AI agents are good at doing work. They are less reliable when the work depends o
 
 - **A compact `AGENTS.md` router** that keeps always-on hard gates and route triggers visible every session.
 - **Trigger-based routed docs** so agents read only the rules relevant to the current task.
-- **Adaptive governance by default**: the main thread selects the smallest sufficient mix of direct work, reusable capabilities, durable artifacts, and targeted review while preserving every fact-triggered gate.
-- **Complete-v2 compatibility without a default pipeline**: planner -> plan evaluator -> solution designer -> solution evaluator -> frozen contract -> executor -> result evaluator -> main-thread review is required when explicitly requested or imposed by stricter downstream policy, and remains available as an evidence-backed deliberate main-thread choice.
+- **One unified adaptive control plane**: the main thread selects any fact-required subset of nine optional capabilities, chooses order from dependencies, and preserves every triggered gate without a fixed workflow.
+- **Main-controlled artifact exchange**: producers write candidates, evaluators write independently owned reports, and main verifies exact hashes and write scope before disposition or transition.
 - **Semantic fidelity controls** for MEDIUM/HIGH-risk work: Original Request Anchor, Pass A/Pass B, Outcome Contract, semantic diff, and AC-pass-but-user-fail handling.
 - **Traceability templates** for source snapshots, coverage manifests, rule preservation ledgers, and routing scenario matrices.
-- **Ready-to-use Codex subagent configs** for the six logical harness responsibilities.
+- **Ready-to-use Codex capability profiles** for Requirements Author/Evaluator, Planner/Plan Evaluator, Solution Designer/Evaluator, Executor/Result Evaluator, and Orchestration Reviewer.
 - **A non-destructive package lifecycle** for installing, updating, and uninstalling the exact managed surface without adopting files by name.
 - **Zero-dependency helper scripts** for extracting `AGENTS.md` source blocks, checking rule-preservation traceability, and running router fixture smoke/coverage checks.
 - **Adoption docs** for migrating an existing project into the harness safely.
@@ -35,16 +35,16 @@ AI agents are good at doing work. They are less reliable when the work depends o
 
 | Path | What it contains |
 | --- | --- |
-| `.codex/agents/` | Optional Codex subagent adapter for the six v2 harness roles. |
-| `.codex/config.example.toml` | Optional Codex repo-config example for one-level subagent fan-out. |
+| `.codex/agents/` | Nine optional Codex capability profiles with stable missions and hard no-fan-out. |
+| `.codex/config.example.toml` | Corroborating depth configuration; it does not grant fan-out or prove isolation. |
 | `AGENTS.md` | The generic repo-level router used by agents in this repo. |
 | `docs/architecture.md` | High-level explanation of the harness model. |
 | `docs/adapters/codex-subagents.md` | How the Codex subagent TOML files map to the generic harness. |
 | `docs/agent-routing/` | Detailed route docs for secrets, external systems, high-risk actions, current-state evidence, implementation boundaries, validation, and planning scale. |
 | `task-docs/_harness/adaptive-orchestration-protocol.md` | Normative topology, delegation, packet, boundary, dependency, retry, intervention, synthesis, and independent-verification rules. |
-| `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic risk protocol and v2 loop rules. |
-| `task-docs/_harness/run-directory-protocol.md` | Run directory, accepted contract, evidence, and result QA conventions. |
-| `task-docs/_harness/templates/` | Copyable templates for plans, reviews, contracts, reports, ledgers, snapshots, and routing fixtures. |
+| `task-docs/_harness/semantic-fidelity-protocol.md` | Semantic risk, authority-chain, Pass A/B, Design, and user-failure rules. |
+| `task-docs/_harness/run-directory-protocol.md` | Proportional artifact, candidate/report, Boundary, evidence, and QA conventions. |
+| `task-docs/_harness/templates/` | Copyable templates for Requirements, Plans, Technical Designs, packets, reports, ledgers, snapshots, and routing fixtures. |
 | `scripts/` | Standard-library Python helpers for snapshot extraction, rule-preservation structural checks, and router fixture smoke/coverage checks. |
 | `examples/minimal-router/` | A small downstream example for projects that want the router pattern without the full stack. |
 | `docs/adoption/` | Migration guidance and release checks. The universal adoption runbook and bundle lifecycle spec are release-repository-only; they are not installed payload. |
@@ -54,12 +54,12 @@ AI agents are good at doing work. They are less reliable when the work depends o
 Universal Harness Adoption installs a fixed oh-my-harness release into an existing Codex repository without taking ownership of that repository's existing governance. An immutable bundle inventory and an installation-state record confine the managed installation surface and ownership to three surfaces:
 
 - release assets under `.oh-my-harness/`;
-- six Codex agent profiles named `.codex/agents/oh-my-harness-*.toml`;
+- nine optional Codex capability profiles named `.codex/agents/oh-my-harness-*.toml`;
 - one marker-delimited managed router block in the target repository's root `AGENTS.md`.
 
 Everything outside those owned files and the managed block remains target-owned. The bytes before and after the managed `AGENTS.md` block are preserved. Existing agents, skills, plugins, scripts, CI, domain rules, and other frameworks remain in place; a path, ownership, or marker conflict stops the operation instead of triggering a general merge.
 
-Lifecycle operations are ownership-aware. A same-version reinstall is a no-op only when the installation state, owned files, and managed block are unchanged and conflict-free. Updating or uninstalling user-modified managed content requires a deterministic backup under `.oh-my-harness-backups/<operation-id>/`, path-specific disclosure, and explicit confirmation. These auxiliary writes sit outside the managed installation surface: the backups are target-owned recovery artifacts, not Harness-owned installation content. Uninstall removes only state-proven Harness files, the managed block, and empty parent directories that the Harness recorded as creating.
+Lifecycle operations are ownership-aware. A same-release reinstall or update is a no-op only when installation state, inventory, owned files, and the managed block agree exactly. Drift or a missing owned surface stops before mutation; prior ownership never authorizes overwriting third-party bytes. For a clean update, deterministic verified backups under `.oh-my-harness-backups/<operation-id>/` close rollback before destructive payload work. The only historical compatibility input is the exact prior six-profile/42-entry owned release, accepted by `update` for conversion to the unified nine-profile/49-entry release; it is not an install-adoption mode or parallel legacy runtime. Uninstall removes only state-proven current files, the managed block, and empty parent directories that the Harness recorded as creating.
 
 The current MVP is a Codex repo-local, single-runtime installer. It does not provide global installation, multi-runtime installation, arbitrary configuration merging, or a general migration framework.
 
@@ -138,13 +138,18 @@ For adoption details, use the [router refactor runbook](docs/adoption/router-ref
 2. **Execution control**: the main thread chooses and revises an evidence-backed topology; named roles and stages are optional, but triggered safety, semantic, current-state, stable-boundary, validation, and independence gates are mandatory.
 3. **Semantic preservation**: high-risk or ambiguous work is checked against the original user intent, not just local acceptance criteria.
 
-This keeps low-risk work lightweight while giving high-risk work enough structure to prevent drift. Every delegation receives a complete task packet and stable producer-nonmodifiable authority. Nested delegation is prohibited by default, and stage-local, retry-domain cumulative, and artifact-free operational budgets remain finite across renamed roles, tools, or stages.
+This keeps low-risk work lightweight while giving high-risk work enough structure to prevent drift. Every delegation receives a complete task packet and stable producer-nonmodifiable Boundary. All nine capabilities are unconditionally hard no-fan-out; only main launches each separate invocation. Stage-local, retry-domain cumulative, and artifact-free operational budgets remain finite across renamed roles, tools, or stages.
 
-The complete v2 sequence is a compatibility composition, not the default meaning of “use the harness.” It MUST run when explicitly requested or required by stricter downstream policy. Without either requirement trigger, the main thread MAY deliberately select it only when a task-specific record identifies concrete facts that make separate planning, plan review, boundary design, boundary review, execution, and result review materially useful; compares a smaller viable topology and its control/evidence/handoff gap; maps non-duplicative value for all six interfaces; binds gate owners, primary evidence, dependencies, handoffs, and decisions; shows positive marginal value despite cost and context; and keeps synthesis, topology revision, intervention, finite retries, evidence arbitration, and final acceptance active. HIGH risk, the harness name, role availability, or process inertia never selects the full sequence by itself, and role PASS labels never replace main-thread judgment.
+There is no named mode or stored sequence. A Run may use direct main work, one capability, any mixed subset, or all nine when facts require it. HIGH risk does not automatically select every capability. When a capability is omitted, its triggered safety, semantic, current-state, stable-Boundary, independence, retry, or validation control still needs an owner, primary evidence, and decision.
 
-## Codex Subagent Adapter
+Formal producer/evaluator work follows one ownership sequence: main packets and launches a producer, verifies the candidate identity/hash/write scope, packets and launches an evaluator against the exact primary candidate/upstream, verifies the evaluator-owned report and protected scope, then alone dispositions findings and decides transition. Evaluator `workspace-write` is a logical report-only write boundary plus post-execution verification, not native path isolation or source/product authority.
 
-The repo includes `.codex/agents/*.toml` for six reusable capability interfaces:
+## Codex Capability Adapter
+
+The source repo includes `.codex/agents/*.toml` for nine reusable capability interfaces:
+
+- `oh_my_harness_requirements_author`
+- `oh_my_harness_requirements_evaluator`
 
 - `oh_my_harness_planner`
 - `oh_my_harness_plan_evaluator`
@@ -152,16 +157,19 @@ The repo includes `.codex/agents/*.toml` for six reusable capability interfaces:
 - `oh_my_harness_solution_evaluator`
 - `oh_my_harness_executor`
 - `oh_my_harness_result_evaluator`
+- `oh_my_harness_orchestration_reviewer`
 
-These files are an adapter for Codex, not a scheduler, mandatory pipeline, or separate architecture. The main thread owns topology, packets, synthesis, intervention, and final acceptance; project facts and validation depth belong in each packet. Other agent runtimes can implement the same responsibilities with their own config format. See `docs/adapters/codex-subagents.md`.
+These files are an adapter for Codex, not a scheduler, pipeline, or separate architecture. The main thread owns topology, every launch, packets/Boundaries, artifact verification, synthesis, intervention, and final acceptance; project facts and validation depth belong in each packet. Solution profiles handle concrete Technical Solution Design only. The five evaluator/reviewer profiles write only their unique reports under logical report-only authority. Other runtimes can implement the same responsibilities with their own config format. See `docs/adapters/codex-subagents.md`.
 
-Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex config with `multi_agent.max_depth = 1`. Copy it to `.codex/config.toml` only if your Codex version supports those repo-local config keys.
+`.codex/config.example.toml` shows `multi_agent.max_depth = 1` as corroborating configuration only. It does not grant fan-out, path isolation, or lifecycle authority; every capability remains hard no-fan-out.
+
+The source governance plane and current release-source map and package assertions now expose these nine capabilities. Generated, installed, and archive-derived acceptance remains locked behind an exact terminal source receipt; source bytes alone are not an installed/package release identity.
 
 ## Use It When
 
 - Your `AGENTS.md` is becoming too long to be useful.
 - You want agent work to be scoped, reviewable, and evidence-backed.
-- You need reusable task planning and execution contracts.
+- You need reusable Task planning, Technical Solution Design, and stable attempt Boundaries.
 - You are migrating project-specific rules into routed docs.
 - You want a public template for safer open-source agent workflows.
 
@@ -169,7 +177,7 @@ Optional fan-out guard: `.codex/config.example.toml` shows a repo-local Codex co
 
 This repo does not require a specific agent vendor, IDE, CI system, or task runner. The managed lifecycle is a Node standard-library CLI, while the installed harness is mostly Markdown plus three Python 3.11 validation helpers. You can use it with subagents, human reviewers, a single agent session, or your own orchestration layer.
 
-That architectural portability is separate from the current adoption MVP, which installs only the six repo-local Codex profiles described above.
+That architectural portability is separate from release or rollout authority. The installer exposes the unified nine-capability release and one closed ownership-first update path from the exact historical six/42 owned installation. It does not authorize Universal Adoption, real consumer migration, package publication, or deployment.
 
 ## Open Source Status
 

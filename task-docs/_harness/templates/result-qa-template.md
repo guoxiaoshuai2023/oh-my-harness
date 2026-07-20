@@ -1,143 +1,66 @@
-# Independent Result QA: <Task Name>
+# Independent Result QA: <Task/Attempt>
 
-Decision: PASS | FAIL
+- Report identity/invocation/path:
+- Completion: partial | complete | unavailable
+- Strict verdict: PASS | FAIL
+- Runtime boundary: logical report-only write boundary plus post-execution verification
+- Consulted calibration path / case IDs:
+- Result/producer report identity/path/SHA-256:
+- Packet/Boundary and upstream identities/SHA-256:
 
-## Inputs And Assigned Review
+## Independence And Primary Evidence
 
-- Applicable authoritative boundary form:
-- Boundary identity/hash and path/reference:
-- Implementation report path/reference:
-- Plan/Original Request Anchor/Outcome Contract identities, when triggered:
-- Context/handoff identity, when used:
-- Assigned review type: code | factual | UX | security | semantic | external-state | combined bounded types
-- Reviewer independence from producer:
-- Relevant route docs and triggered gates:
-- Selected topology and complete-v2 state: adaptive default | required complete v2 | deliberate complete v2
+- Actual source/state/diff/output inspected:
+- Explicit source root and independently regenerated contract digest/source hashes:
+- Omitted, structurally valid reversed, and contradictory same-path source variants repeated for every controlling domain/interface:
+- Normative-field usage trace and prose/record force/trigger/owner/action/result/stop comparison:
+- Physical Task 2 before/after/delta/readback/attribution identities repeated independently:
+- Exact current registry/profile hashes and Task 3 currentness/topology/zero-write identities repeated independently:
+- All eight persistence combinations across clean/triggered and first/exact-repeat scans, same-session first versus lost-history reentry, exact inline→Context transfer, conflict/stale/unavailable history, and zero Board/Task scan ownership:
+- All seventeen trigger leaves, evidence/privacy precedence, retrospective/candidate physical readback, and clean/no-skeleton absence:
+- Case-review unique report-only integrity, invalid/partial/colliding/extra-write negatives, and no promotion authority:
+- Create/update/merge/downgrade/reject/supersede/retire controlled-root custody actions with exact preimages/deltas/postimages, missing human/custodian, containment, and action-specific false postimages:
+- Learning-to-Harness/package/state/launch barrier sentinels and real-case/real-learning/package-map absence:
+- Producer claims independently repeated or corroborated:
+- Target/upstream/protected preflight:
+- Report path absent before launch:
+- Unchecked areas:
 
-An immutable `ACCEPTED_CONTRACT.md` is the applicable boundary in required or deliberate complete v2; concise stable packets and other frozen/versioned forms are also valid when authorized.
+## Scope And Lifecycle
 
-## Authority, Scope, And State Verification
+- Main selected/launched producer and verified candidate/result hash/scope: PASS/FAIL
+- Main selected/launched evaluator with exact target/upstream and unique report: PASS/FAIL
+- Evaluator wrote only this report and did not repair/launch/transition: PASS/FAIL
+- Target/upstream/protected state unchanged during review: PASS/FAIL
+- No invalid/partial/operational report unlocked work: PASS/FAIL
+- Peer messages and receipts did not impersonate authority: PASS/FAIL
 
-- Verdict: PASS | FAIL
-- Stable producer-nonmodifiable boundary existed before the attempt:
-- Producer did not modify/reinterpret the boundary:
-- Correct boundary level and escalation triggers applied:
-- Allowed files/effects and protected paths respected:
-- Dirty/shared/current-state before/after evidence independently checked:
-- Every actual delta classified; unexplained delta absent:
-- Required validation commands/checks independently inspected:
-- Implementation report complete and truthful:
+## AC Decisions
 
-## Outcome And Semantic Verification
-
-- Verdict: PASS | FAIL | N/A
-- Required for this task: yes/no
-- Original Request Anchor / Pass A / Outcome Contract identities checked:
-- Outcome ACs independently checked against primary evidence:
-- Outcome evidence remains distinct from implementation-only evidence:
-- AC-pass-but-user-fail counterexample exercised:
-- Current-state source/freshness checked:
-- Producer made no unresolved semantic decision:
-- HIGH-risk producer-independent semantic/safety/external evidence satisfied:
-
-## Adaptive Topology And Gate Verification
-
-- Selected topology preserved every triggered gate: PASS/FAIL
-- Adaptive-default state `MUST` have selected the smallest sufficient topology when neither required nor fully evidenced deliberate complete v2 applied: PASS/FAIL/N/A
-- Required-complete-v2 state `MUST` have preserved the exact complete ordered composition for explicit request or stricter downstream policy: PASS/FAIL/N/A
-- Deliberate-complete-v2 state `MAY` have selected that composition without those triggers only with the complete six-field record: PASS/FAIL/N/A
-- Harness presence, risk labels (including HIGH), role/artifact availability, habit, or inertia did not automatically select complete v2: PASS/FAIL
-- Reusable guidance neither defaults to complete v2 nor narrows its authority to only explicit request/policy: PASS/FAIL
-- Omitted roles/stages had an evidence-backed rationale and did not omit controls: PASS/FAIL/N/A
-- Task packet route binding used proved inheritance or explicit routes/gates: PASS/FAIL/N/A
-- Dependencies, branch state, obsolete/cancellation conditions, and synthesis checked: PASS/FAIL/N/A
-- Review type matches the actual correctness/risk question: PASS/FAIL
-- No producer self-review was counted as independent: PASS/FAIL
-
-### Deliberate Complete-v2 Six-Field Verification
-
-Complete when deliberate complete v2 was selected; otherwise mark each row `N/A` and cite the selected-state evidence.
-
-- Concrete task facts support the complete composition: PASS/FAIL/N/A
-- At least one smaller viable topology and its specific control/evidence/handoff gap were compared: PASS/FAIL/N/A
-- All six roles supplied non-duplicative task-specific value: PASS/FAIL/N/A
-- Triggered gate owners, primary evidence, dependencies, handoffs, and decisions were complete: PASS/FAIL/N/A
-- Positive marginal value remained after coordination cost and context impact: PASS/FAIL/N/A
-- Main thread actively synthesized, revised topology when needed, intervened, enforced finite retries, arbitrated evidence, and retained final acceptance: PASS/FAIL/N/A
-
-Any missing or generic applicable field, automatic/default full-v2 selection, only-explicit/policy narrowing, or passive relay is strict `FAIL`.
-
-## Retry And Failure Classification
-
-- Review finding is within assigned review type and tied to active authority: yes/no
-- Decisive evidence for PASS/FAIL:
-- Failure origin, if any: implementation | prompt | missing/stale evidence | plan/contract | role/capability mismatch | evaluator misunderstanding/unsupported/wrong type | user-intent ambiguity | external environment/permission/tool/service/state
-- Quality failure valid for stage-local count: yes/no/N/A
-- Quality failure valid for retry-domain cumulative count: yes/no/N/A
-- Artifact-free operational failure only: yes/no/N/A
-- Counter continuity and intervention/exhaustion/resume handling checked:
-- Unsupported finding disposition: reject with evidence, leave producer counts unchanged, and correct review path | N/A
-- Failure route: same-boundary executor | new versioned solution boundary | planning | corrected reviewer/packet | user decision/blocker | N/A
-
-## Calibration
-
-- Invocation packet canonical evaluator-calibration identity:
-- Invocation packet canonical evaluator-calibration path: `task-docs/_harness/evaluator-calibration.md`
-- Invocation packet required pre-verdict consultation and both return fields: PASS/FAIL
-- Consulted calibration path: `task-docs/_harness/evaluator-calibration.md`
-- Calibration consultation completed before verdict: yes/no
-- Relevant calibration case IDs: CAL-... | `N/A` after consultation
-
-Missing packet identity/path, consultation, or either return field invalidates the evaluator invocation and requires `FAIL`/`STOP`; do not repair or infer the binding during QA. `N/A` is allowed only for relevant case IDs after consultation. It cannot replace the canonical path, consultation, primary-evidence inspection, or independent judgment.
-
-## Independent Evidence Checklist
-
-- Applicable boundary identity/content:
-- Implementation report:
-- Actual file/diff/state inspection:
-- Command output:
-- Runtime or user-visible behavior:
-- Current/external-state readback:
-- Generated artifacts/screenshots:
-- Router and triggered route/gate evidence:
-- Semantic artifacts:
-- Secret/sensitive-material safety:
-- What was not checked and why:
-
-Producer self-report is a claim, not independent evidence.
-
-## Acceptance Criteria Verification
-
-| AC | Type | Result | Independent primary evidence | Discriminating failure signal |
+| AC | Primary behavior evidence | Negative probe repeated | PASS/FAIL | Finding |
 | --- | --- | --- | --- | --- |
-| AC1 | Outcome / Implementation / Safety | PASS/FAIL |  |  |
+|  |  |  |  |  |
 
-Outcome AC coverage summary:
+## Semantic And Regression Decision
 
--
+- User result and non-goals preserved: PASS/FAIL
+- AC-pass-but-user-fail counterexample rejected: PASS/FAIL
+- Structural/count/string success did not override behavior: PASS/FAIL
+- Required regressions/current-state evidence: PASS/FAIL
 
-Implementation/safety AC coverage summary:
+## Findings And Terminal Boundary
 
--
+| Severity | Finding | Evidence | Likely owner |
+| --- | --- | --- | --- |
+|  |  |  |  |
 
-AC-pass-but-user-fail result:
+- Reviewer authored only this report:
+- Main must compute report hash, verify scope/bindings, disposition findings, and alone accept/reject.
 
--
+Never PASS with caveats. Every assigned AC and triggered gate needs independently inspected primary evidence; any P0/P1 or missing required evidence is FAIL.
 
-## Findings
+The adjacent interface requires the actual source decisions and declares independent evidence outputs. Producer claims, serialized traces, or fixture objects are forbidden as the QA oracle.
 
-List findings by severity. Use `P0`, `P1`, `P2`, or `P3`.
-
-| Severity | Finding | Primary evidence | Required fix/route | Calibration case |
-| --- | --- | --- | --- | --- |
-|  |  |  |  | CAL-... / N/A |
-
-## Overall Decision
-
-- Verdict: PASS | FAIL
-- Rule: Overall Verdict must equal `Decision`.
-- Rule: Any failed required authority/scope/implementation check makes Overall Verdict `FAIL`.
-- Rule: Any failed required outcome/semantic/safety/independence check makes Overall Verdict `FAIL`.
-- Rule: Any P0/P1, missing AC evidence, or unverified AC makes Overall Verdict `FAIL`.
-
-Do not output `PASS with caveats`. PASS requires every required AC and triggered gate to be independently verified, strict evidence to support the assigned review judgment, and no P0/P1 finding. This QA does not perform repairs, redesign, boundary edits, or main-thread final acceptance.
+<!-- oh-my-harness-work-truth:v1:start -->
+{"version":1,"id":"interface.result-qa","domain":"interface:result-qa","kind":"interface","sourceOwner":"task-docs/_harness/templates/result-qa-template.md","requires":["acceptance.actual-result","subjective.return-user","task2.eligible","task3.current","topology.verification-only","conflict.protected-stop","waiver.nonwaivable-stop","retry-control.quality-exhausted","run-learning.scan-storage-inline","run-learning.scan-history-unavailable","run-learning.scan-transfer","run-learning.triggered","run-learning.evidence-sufficient","run-learning.artifact-create","run-learning.review-valid","central-case.postimage-valid","learning-change.automatic-stop"],"emits":["explicitSourceRoot","contractDigest","sourceHashes","sourceVariantEvidence","normativeUsageTrace","proseRecordComparison","physicalTask2Observations","currentRegistryProfileHashes","task3CurrentnessTopologyEvidence","allPersistenceScanEvidence","triggerEvidencePrecedenceAndArtifactEvidence","caseReviewIntegrityEvidence","custodyActionAndFalsePostimageEvidence","learningNoChangeAndPackageAbsenceEvidence","strictAcDecisions","strictVerdict"],"references":["frozenAcExpectations","actualResultIdentity","boundaryAndUpstreamHashes","protectedManifest","actualScanArtifactReviewCustodyIdentities","realCaseLearningAndPackageAbsenceManifest"],"forbids":["producerClaimAsOracle","producerSerializedTraceAsOracle","objectOnlyPhysicalClaim","targetRepair","transition","acceptance","casePromotion","humanImpersonation","automaticHarnessChange","automaticLaunch"]}
+<!-- oh-my-harness-work-truth:v1:end -->

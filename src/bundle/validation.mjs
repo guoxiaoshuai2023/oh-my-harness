@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 export const PACKAGE_NAME = '@guoxiaoshuai2023/oh-my-harness';
@@ -27,6 +28,9 @@ const PROFILE_REWRITES = [
   ['harness-solution-evaluator.toml', 'oh-my-harness-solution-evaluator.toml'],
   ['harness-executor.toml', 'oh-my-harness-executor.toml'],
   ['harness-result-evaluator.toml', 'oh-my-harness-result-evaluator.toml'],
+  ['harness-requirements-author.toml', 'oh-my-harness-requirements-author.toml'],
+  ['harness-requirements-evaluator.toml', 'oh-my-harness-requirements-evaluator.toml'],
+  ['harness-orchestration-reviewer.toml', 'oh-my-harness-orchestration-reviewer.toml'],
 ];
 
 const EXACT_HELPERS = [
@@ -37,23 +41,41 @@ const EXACT_HELPERS = [
 
 const EXACT_AGENT_PATHS = [
   '.codex/agents/oh-my-harness-executor.toml',
+  '.codex/agents/oh-my-harness-orchestration-reviewer.toml',
   '.codex/agents/oh-my-harness-plan-evaluator.toml',
   '.codex/agents/oh-my-harness-planner.toml',
+  '.codex/agents/oh-my-harness-requirements-author.toml',
+  '.codex/agents/oh-my-harness-requirements-evaluator.toml',
   '.codex/agents/oh-my-harness-result-evaluator.toml',
   '.codex/agents/oh-my-harness-solution-designer.toml',
   '.codex/agents/oh-my-harness-solution-evaluator.toml',
 ];
 
 const CALIBRATION_DEPENDENTS = [
+  'agent/requirements-evaluator',
   'agent/plan-evaluator',
   'agent/solution-evaluator',
   'agent/result-evaluator',
+  'agent/orchestration-reviewer',
   'calibration/adaptive-orchestration-acceptance-matrix',
   'template/orchestration-prompt',
   'template/plan-review',
   'template/result-qa',
   'template/task-packet',
 ];
+
+export const TARGET_PROJECTION_SHA256 = 'b4d988390d4e214cd2d7887c800e3c5b7ba45d87edd7c7db147b7598fab15db5';
+export const TARGET_REQUIRED_PROJECTION_SHA256 = 'a32fe9eff38a1d8dc7af91eba3e1c8068f4a5d9318f474d0a701516f56f59480';
+const TARGET_KIND_COUNTS = {
+  documentation: 12,
+  'adapter-config': 1,
+  example: 2,
+  protocol: 3,
+  template: 17,
+  calibration: 2,
+  'python-helper': 3,
+  'agent-profile': 9,
+};
 
 const MANAGED_BLOCK = {
   sourceRouter: 'AGENTS.md',
@@ -212,10 +234,16 @@ export function expectedRewrites(entries) {
   ];
 }
 
+export function bundleProjection(entries, includeRequired = false) {
+  return `${entries.map((entry) => [
+    entry.source, entry.destination, entry.kind, ...(includeRequired ? [String(entry.required)] : []),
+  ].join('\t')).join('\n')}\n`;
+}
+
 export function assertBundleMap(map) {
   assertExactKeys(map, ['schemaVersion', 'entries', 'rewrites', 'calibrationBinding', 'managedBlock'], 'bundle map');
-  if (map.schemaVersion !== 1 || !Array.isArray(map.entries) || map.entries.length !== 42) {
-    fail('bundle map must contain exactly 42 entries at schema version 1');
+  if (map.schemaVersion !== 1 || !Array.isArray(map.entries) || map.entries.length !== 49) {
+    fail('bundle map must contain exactly 49 entries at schema version 1');
   }
   const ids = new Set();
   const sources = new Set();
@@ -227,7 +255,7 @@ export function assertBundleMap(map) {
     }
     assertSafeRelativePath(entry.source, `bundle map entry ${index} source`);
     assertSafeRelativePath(entry.destination, `bundle map entry ${index} destination`);
-    if (!entry.required) fail(`bundle map entry ${entry.assetId} must be required`);
+    if (entry.required !== true) fail(`bundle map entry ${entry.assetId} must be required`);
     if (entry.transform !== 'reference-rewrite') fail(`bundle map entry ${entry.assetId} has an unsupported transform`);
     if (!entry.destination.startsWith('.oh-my-harness/') && !entry.destination.startsWith('.codex/agents/oh-my-harness-')) {
       fail(`bundle map entry ${entry.assetId} has an unsafe target namespace`);
@@ -240,8 +268,21 @@ export function assertBundleMap(map) {
     sources.add(entry.source);
     destinations.add(entry.destination);
   }
+  const kindCounts = Object.fromEntries(Object.keys(TARGET_KIND_COUNTS).map((kind) => [
+    kind, map.entries.filter((entry) => entry.kind === kind).length,
+  ]));
+  if (!isDeepStrictEqual(kindCounts, TARGET_KIND_COUNTS)) fail('bundle map kind membership mismatch');
+  if (map.entries.some(({ assetId, source, destination }) => assetId === 'template/task-contract'
+      || source.endsWith('/task-contract-template.md') || destination.endsWith('/task-contract-template.md'))) {
+    fail('bundle map retains the obsolete task Contract template');
+  }
   if (!isDeepStrictEqual([...destinations].filter((item) => item.startsWith('.codex/agents/')).sort(), EXACT_AGENT_PATHS)) {
-    fail('bundle map must contain the six exact prefixed agent destinations');
+    fail('bundle map must contain the nine exact prefixed agent destinations');
+  }
+  const projectionSha = createHash('sha256').update(bundleProjection(map.entries)).digest('hex');
+  const requiredProjectionSha = createHash('sha256').update(bundleProjection(map.entries, true)).digest('hex');
+  if (projectionSha !== TARGET_PROJECTION_SHA256 || requiredProjectionSha !== TARGET_REQUIRED_PROJECTION_SHA256) {
+    fail('bundle map exact target projection mismatch');
   }
   const expected = expectedRewrites(map.entries);
   if (!isDeepStrictEqual(map.rewrites, expected)) fail('bundle map rewrite table is incomplete or out of contract order');
@@ -277,9 +318,12 @@ export function assertInventory(inventory, schema) {
     fail('bundle inventory schema does not enforce its closed fixed shape');
   }
   const paths = inventory.requiredFiles.map((item) => item.destinationPath);
+  if (paths.length !== 49) fail('bundle inventory must contain the exact 49 payloads');
   if (!isDeepStrictEqual(paths, [...paths].sort())) fail('bundle inventory required files must be destination-sorted');
   if (!isDeepStrictEqual(inventory.ownership.payloadPaths, paths)) fail('bundle inventory ownership payload paths mismatch');
   if (!isDeepStrictEqual(inventory.ownership.agentPaths, EXACT_AGENT_PATHS)) fail('bundle inventory agent paths mismatch');
+  if (paths.some((item) => item.endsWith('/task-contract-template.md') || item.includes('/task-docs/cases/')
+      || item.includes('/task-docs/history/'))) fail('bundle inventory contains a forbidden target surface');
   if (paths.includes('.oh-my-harness/bundle-inventory.json')) fail('bundle inventory must not hash itself');
   if (JSON.stringify(inventory.ownership).includes('install-state') || JSON.stringify(inventory.ownership).includes('backup')) {
     fail('bundle inventory must not claim mutable state or backup ownership');

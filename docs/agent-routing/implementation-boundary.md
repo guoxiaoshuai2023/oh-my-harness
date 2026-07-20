@@ -20,9 +20,11 @@ Read this doc for code changes, documentation changes, template changes, generat
 
 ## Delegated Write Boundaries
 
-- Every delegated write attempt must cite a stable authoritative boundary that identifies the objective, allowed writes, protected state, required evidence, and stop conditions.
+- Every delegated write attempt must cite a stable main-issued Boundary that identifies the objective, allowed actions/writes, protected state, required evidence/negative probes, validation, and stop conditions.
 - The producer must not edit or reinterpret its controlling boundary. A material boundary change stops the attempt and requires a new identity or version.
-- A concise stable packet may govern LOW-risk single-context work. Use a frozen or versioned boundary for MEDIUM/HIGH semantic risk affecting the result, HIGH operational risk or high-impact external writes, cross-context or dependent writes, protected paths or shared mutable state, or credible boundary drift.
+- An inline Boundary or concise stable packet may govern LOW-risk single-context work. Use a persisted/versioned Boundary for MEDIUM/HIGH semantic risk affecting the result, HIGH operational risk or high-impact external writes, cross-context or dependent writes, protected paths or shared mutable state, or credible boundary drift. All forms remain main-owned and carry equivalent permission/protected/evidence/stop semantics.
+- A Technical Solution Design predicts affected surfaces and implementation order; it never grants attempt permission. Main derives the Boundary after Design acceptance.
+- A capability must not create, invoke, launch, delegate to, or reconfigure another agent. A delegated packet cannot override this hard no-fan-out rule.
 - Preserve unrelated work with before/after hashes or a changed-path baseline when a final diff cannot distinguish pre-existing or untracked state.
 
 ## Templates And Protocols

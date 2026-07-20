@@ -28,7 +28,6 @@ export const EXPECTED_PAIRS = [
   ['task-docs/_harness/templates/solution-review-template.md', '.oh-my-harness/templates/solution-review-template.md'],
   ['task-docs/_harness/templates/source-coverage-manifest-template.md', '.oh-my-harness/templates/source-coverage-manifest-template.md'],
   ['task-docs/_harness/templates/source-snapshot-template.md', '.oh-my-harness/templates/source-snapshot-template.md'],
-  ['task-docs/_harness/templates/task-contract-template.md', '.oh-my-harness/templates/task-contract-template.md'],
   ['task-docs/_harness/templates/task-packet-template.md', '.oh-my-harness/templates/task-packet-template.md'],
   ['task-docs/_harness/evaluator-calibration.md', '.oh-my-harness/calibration/evaluator-calibration.md'],
   ['task-docs/_harness/adaptive-orchestration-acceptance-matrix.md', '.oh-my-harness/calibration/adaptive-orchestration-acceptance-matrix.md'],
@@ -41,6 +40,14 @@ export const EXPECTED_PAIRS = [
   ['.codex/agents/harness-solution-evaluator.toml', '.codex/agents/oh-my-harness-solution-evaluator.toml'],
   ['.codex/agents/harness-executor.toml', '.codex/agents/oh-my-harness-executor.toml'],
   ['.codex/agents/harness-result-evaluator.toml', '.codex/agents/oh-my-harness-result-evaluator.toml'],
+  ['.codex/agents/harness-requirements-author.toml', '.codex/agents/oh-my-harness-requirements-author.toml'],
+  ['.codex/agents/harness-requirements-evaluator.toml', '.codex/agents/oh-my-harness-requirements-evaluator.toml'],
+  ['.codex/agents/harness-orchestration-reviewer.toml', '.codex/agents/oh-my-harness-orchestration-reviewer.toml'],
+  ['task-docs/_harness/templates/requirements-template.md', '.oh-my-harness/templates/requirements-template.md'],
+  ['task-docs/_harness/templates/governance-review-template.md', '.oh-my-harness/templates/governance-review-template.md'],
+  ['task-docs/_harness/templates/technical-solution-design-template.md', '.oh-my-harness/templates/technical-solution-design-template.md'],
+  ['task-docs/_harness/templates/task-board-template.md', '.oh-my-harness/templates/task-board-template.md'],
+  ['task-docs/_harness/templates/retrospective-case-template.md', '.oh-my-harness/templates/retrospective-case-template.md'],
 ];
 
 export const ROUTER_HEADINGS = [

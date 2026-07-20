@@ -6,7 +6,8 @@
 multi_agent = true
 
 [multi_agent]
-# Keep orchestration as a main-thread responsibility. Subagents should not
-# spawn their own subagent trees for this harness unless a downstream project
-# explicitly opts into a deeper topology.
+# This is corroborating configuration only. It does not grant fan-out,
+# lifecycle authority, report-path isolation, or proof of runtime enforcement.
+# Harness capabilities are unconditionally hard no-fan-out; only main launches
+# each separate invocation.
 max_depth = 1
