@@ -1,5 +1,7 @@
 # oh-my-harness
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 **A portable agent harness for teams that want AI coding agents to move fast without losing scope, safety, or intent.**
 
 Most agent workflows start simple: one `AGENTS.md`, a few rules, and a lot of trust. Then the repo grows. Rules get long, safety constraints get buried, task plans drift, and "the tests passed" stops being enough evidence that the agent did the right thing.
